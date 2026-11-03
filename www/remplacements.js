@@ -14,7 +14,18 @@ window.REPLACEMENTS = {
       { nom: 'Soulevé de terre roumain', machine: 'Barre ou haltères', img: 'souleve_roumain' },
       { nom: 'Soulevé de terre (deadlift)', machine: 'Plateforme haltérophilie + barre olympique', img: 'deadlift' },
       { nom: 'Hip thrust', machine: 'Machine hip thrust ou banc + barre', img: 'hip_thrust' },
-      { nom: 'Mollets à la presse', machine: 'Presse à cuisses', img: 'mollets_presse' }
+      { nom: 'Mollets à la presse', machine: 'Presse à cuisses', img: 'mollets_presse' },
+      { nom: 'Hack squat', machine: 'Machine hack squat', img: 'hack_squat' },
+      { nom: 'Squat à la Smith machine', machine: 'Smith machine', img: 'smith_squat' },
+      { nom: 'Squat barre', machine: 'Cage / rack à squat + barre', img: 'squat_barre' },
+      { nom: 'Presse à cuisses pieds serrés', machine: 'Presse à cuisses', img: 'presse_pieds_serres' },
+      { nom: 'Abducteurs (machine)', machine: 'Machine abducteurs', img: 'abducteurs' },
+      { nom: 'Adducteurs (machine)', machine: 'Machine adducteurs', img: 'adducteurs' },
+      { nom: 'Kickback fessier à la poulie', machine: 'Poulie basse + sangle de cheville', img: 'kickback_poulie', par_cote: true },
+      { nom: 'Pont fessier à la barre', machine: 'Banc ou tapis + barre', img: 'pont_fessier_barre' },
+      { nom: 'Mollets debout (machine)', machine: 'Machine mollets debout', img: 'mollets_debout' },
+      { nom: 'Mollets assis (machine)', machine: 'Machine mollets assis', img: 'mollets_assis' },
+      { nom: 'Squat unijambiste', machine: 'Barre ou poids du corps', img: 'squat_barre_unijambiste', par_cote: true }
     ] },
     { id: 'dos', nom: 'Dos', mots: ['tirage', 'rowing', 'traction', 'dos', 'row', 'bucheron', 'pulldown', 'retropulsion'], exercices: [
       { nom: 'Tirage vertical', machine: 'Machine tirage vertical (lat pulldown)', img: 'tirage_vertical' },
@@ -22,7 +33,17 @@ window.REPLACEMENTS = {
       { nom: 'Rowing barre buste penché', machine: 'Barre EZ ou droite', img: 'rowing_ez' },
       { nom: 'Rowing haltères buste penché', machine: 'Haltères', img: 'rowing_halteres' },
       { nom: 'Tirage bûcheron', machine: 'Banc plat + haltère', img: 'tirage_bucheron', par_cote: true },
-      { nom: 'Rétropulsion à la corde', machine: 'Poulie haute + corde', img: 'retropulsion_corde' }
+      { nom: 'Rétropulsion à la corde', machine: 'Poulie haute + corde', img: 'retropulsion_corde' },
+      { nom: 'Tractions', machine: 'Barre de traction', img: 'pullups' },
+      { nom: 'Tractions supination (chin-up)', machine: 'Barre de traction', img: 'chin_up' },
+      { nom: 'Tirage vertical prise serrée', machine: 'Poulie haute + barre', img: 'tirage_serre' },
+      { nom: 'Tirage vertical poignée en V', machine: 'Poulie haute + poignée en V', img: 'tirage_v_bar' },
+      { nom: 'Pull-over à la poulie', machine: 'Poulie haute + barre', img: 'pull_over_poulie' },
+      { nom: 'Rowing barre en T', machine: 'Barre en T / landmine', img: 'tbar_row' },
+      { nom: 'Rowing à la Smith machine', machine: 'Smith machine', img: 'rowing_smith' },
+      { nom: 'Extensions lombaires', machine: 'Banc à lombaires', img: 'lombaires' },
+      { nom: 'Shrugs haltères', machine: 'Haltères', img: 'shrug_halteres' },
+      { nom: 'Face pull', machine: 'Poulie haute + corde', img: 'face_pull' }
     ] },
     { id: 'pecs', nom: 'Pecs', mots: ['couche', 'pec', 'pecs', 'ecarte', 'pompe', 'chest', 'incline', 'bench'], exercices: [
       { nom: 'Développé couché barre', machine: 'Banc plat + barre', img: 'dev_couche' },
@@ -30,24 +51,56 @@ window.REPLACEMENTS = {
       { nom: 'Développé incliné haltères', machine: 'Banc inclinable + haltères', img: 'dev_incline_halteres' },
       { nom: 'Chest press', machine: 'Machine chest press', img: 'chest_press' },
       { nom: 'Écarté vis-à-vis', machine: 'Poulies vis-à-vis', img: 'ecarte_vis_a_vis' },
-      { nom: 'Pompes', machine: 'Tapis', img: 'pompes' }
+      { nom: 'Pompes', machine: 'Tapis', img: 'pompes' },
+      { nom: 'Pec deck (butterfly)', machine: 'Machine pec deck', img: 'pec_deck' },
+      { nom: 'Écarté haltères', machine: 'Banc plat + haltères', img: 'ecarte_halteres' },
+      { nom: 'Écarté incliné à la poulie', machine: 'Poulies + banc incliné', img: 'ecarte_incline_poulie' },
+      { nom: 'Développé décliné barre', machine: 'Banc décliné + barre', img: 'dev_decline_barre' },
+      { nom: 'Développé décliné haltères', machine: 'Banc décliné + haltères', img: 'dev_decline_halteres' },
+      { nom: 'Développé couché à la Smith machine', machine: 'Smith machine + banc', img: 'dev_couche_smith' },
+      { nom: 'Pull-over haltère', machine: 'Banc plat + haltère', img: 'pullover_halteres' }
     ] },
     { id: 'epaules', nom: 'Épaules', mots: ['epaule', 'epaules', 'militaire', 'elevation', 'elevations', 'lateral', 'laterales', 'shoulder', 'oiseau'], exercices: [
       { nom: 'Développé militaire', machine: 'Barre + rack', img: 'dev_militaire' },
       { nom: 'Développé épaules haltères', machine: 'Banc à dossier + haltères', img: 'dev_epaules_halteres' },
       { nom: 'Développé épaules machine', machine: 'Machine shoulder press', img: 'shoulder_press_machine' },
-      { nom: 'Élévations latérales', machine: 'Haltères légers', img: 'elevations_laterales' }
+      { nom: 'Élévations latérales', machine: 'Haltères légers', img: 'elevations_laterales' },
+      { nom: 'Développé Arnold', machine: 'Haltères', img: 'arnold_press' },
+      { nom: 'Élévations frontales', machine: 'Haltères', img: 'elevations_frontales' },
+      { nom: 'Élévations latérales à la poulie', machine: 'Poulie basse', img: 'elevations_laterales_poulie' },
+      { nom: 'Oiseau haltères (épaules arrière)', machine: 'Haltères', img: 'oiseau_halteres' },
+      { nom: 'Tirage menton barre', machine: 'Barre', img: 'tirage_menton' }
     ] },
     { id: 'bras', nom: 'Bras', mots: ['curl', 'biceps', 'triceps', 'dips', 'marteau', 'extension'], exercices: [
       { nom: 'Curl poulie basse', machine: 'Poulie basse', img: 'curl_poulie_basse' },
       { nom: 'Curl marteau', machine: 'Haltères', img: 'curl_marteau' },
       { nom: 'Extension triceps poulie', machine: 'Poulie haute', img: 'extension_triceps' },
-      { nom: 'Dips sur banc', machine: 'Banc plat', img: 'dips_banc' }
+      { nom: 'Dips sur banc', machine: 'Banc plat', img: 'dips_banc' },
+      { nom: 'Curl barre', machine: 'Barre droite ou EZ', img: 'curl_barre' },
+      { nom: 'Curl barre EZ', machine: 'Barre EZ', img: 'curl_ez' },
+      { nom: 'Curl incliné haltères', machine: 'Banc incliné + haltères', img: 'curl_incline' },
+      { nom: 'Curl pupitre machine', machine: 'Machine curl pupitre', img: 'curl_pupitre_machine' },
+      { nom: 'Curl concentré', machine: 'Banc + haltère', img: 'curl_concentre', par_cote: true },
+      { nom: 'Curl marteau à la corde', machine: 'Poulie basse + corde', img: 'curl_marteau_corde' },
+      { nom: 'Extension triceps à la corde', machine: 'Poulie haute + corde', img: 'triceps_corde' },
+      { nom: 'Extension triceps barre en V', machine: 'Poulie haute + barre en V', img: 'triceps_barre_v' },
+      { nom: 'Extension triceps au-dessus de la tête (corde)', machine: 'Poulie + corde', img: 'triceps_nuque_corde' },
+      { nom: 'Barre au front (skull crusher)', machine: 'Barre EZ + banc', img: 'barre_front' },
+      { nom: 'Kickback triceps haltère', machine: 'Haltère', img: 'kickback_triceps', par_cote: true }
     ] },
     { id: 'abdos', nom: 'Abdos', mots: ['crunch', 'gainage', 'abdo', 'abdos', 'twist', 'planche', 'releve'], exercices: [
       { nom: 'Crunch machine', machine: 'Machine abdominaux', img: 'crunch_machine' },
       { nom: 'Gainage planche', machine: 'Tapis', img: 'gainage', reps: '45 s' },
-      { nom: 'Russian twist', machine: 'Tapis (+ disque)', img: 'russian_twist' }
+      { nom: 'Russian twist', machine: 'Tapis (+ disque)', img: 'russian_twist' },
+      { nom: 'Crunch à la poulie', machine: 'Poulie haute + corde', img: 'crunch_poulie' },
+      { nom: 'Relevé de jambes suspendu', machine: 'Barre de traction', img: 'releve_jambes_suspendu' },
+      { nom: 'Relevé de jambes allongé', machine: 'Banc plat', img: 'releve_jambes_banc' },
+      { nom: 'Crunch au sol', machine: 'Tapis', img: 'crunch_sol' },
+      { nom: 'Crunch inversé', machine: 'Tapis', img: 'crunch_inverse' },
+      { nom: 'Gainage latéral', machine: 'Tapis', img: 'planche_laterale', reps: '30 s' },
+      { nom: 'Mountain climbers', machine: 'Tapis', img: 'mountain_climbers' },
+      { nom: 'Bûcheron à la poulie', machine: 'Poulie haute', img: 'bucheron_poulie' },
+      { nom: 'Roue abdominale', machine: 'Roue à abdos', img: 'roue_abdos' }
     ] }
   ]
 };

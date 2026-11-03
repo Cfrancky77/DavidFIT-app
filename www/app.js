@@ -108,7 +108,8 @@
   // Images par défaut : Free Exercise DB (domaine public), position de départ (_0) et d'arrivée (_1).
   const STOCK = ['front_squat', 'deadlift', 'hip_thrust', 'fente_bulgare', 'leg_extension', 'tirage_vertical', 'rowing_ez',
     'retropulsion_corde', 'tirage_bucheron', 'curl_poulie_basse', 'dev_couche', 'dev_incline_halteres', 'dev_militaire',
-    'ecarte_vis_a_vis', 'extension_triceps', 'rameur', 'elliptique', 'velo', 'pompes'].concat(window.STOCK_EXTRA || []);
+    'ecarte_vis_a_vis', 'extension_triceps', 'rameur', 'elliptique', 'velo', 'pompes'].concat(window.STOCK_EXTRA || [])
+    .concat(((window.REPLACEMENTS || {}).groupes || []).flatMap((g) => g.exercices.map((e) => e.img)).filter(Boolean));
   const stockKey = (name) => { const k = String(name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return STOCK.includes(k) ? k : null; };
   function showPhoto(src, stock) {
     const o = document.createElement('div');
@@ -680,12 +681,18 @@
       <button class="btn block" id="rep-own" style="margin-top:8px">Utiliser cet exercice</button>
       ${!add && ex.remplace && !ex.ajoute && orig ? `<p></p><button class="btn block ghost" id="rep-reset">Remettre « ${esc(orig.nom)} »</button>` : ''}</div>`;
     const dyn = o.querySelector('#rep-dyn');
+    let query = '';
     const drawList = () => {
       const g = REPL.groupes.find((x) => x.id === gid) || { exercices: [] };
-      const list = g.exercices.filter((e) => !used.has(nameKey(e.nom)));
-      dyn.innerHTML = `<div class="chips">${REPL.groupes.map((x) => `<button class="chip ${x.id === gid ? 'on' : ''}" data-g="${x.id}">${esc(x.nom)}</button>`).join('')}</div>
-        ${list.map((e, i) => `<button class="rep-item" data-i="${i}">${STOCK.includes(e.img) ? `<img class="thumb" src="img/${e.img}_0.jpg" alt="">` : ''}<span><b>${esc(e.nom)}</b><br><span class="muted">${esc(e.machine || '')}</span></span></button>`).join('') || '<p class="muted">Rien d\'autre dans ce groupe.</p>'}`;
-      dyn.querySelectorAll('[data-g]').forEach((b) => { b.onclick = () => { gid = b.dataset.g; drawList(); }; });
+      const q = nameKey(query);
+      const list = (q ? REPL.groupes.flatMap((x) => x.exercices) : g.exercices)
+        .filter((e) => !used.has(nameKey(e.nom)) && (!q || nameKey(e.nom + ' ' + (e.machine || '')).includes(q)));
+      dyn.innerHTML = `<input class="field" id="rep-q" type="search" placeholder="Rechercher (nom, machine…)" value="${esc(query)}" autocomplete="off">
+        <div class="chips" style="${q ? 'opacity:.5' : ''}">${REPL.groupes.map((x) => `<button class="chip ${x.id === gid && !q ? 'on' : ''}" data-g="${x.id}">${esc(x.nom)}</button>`).join('')}</div>
+        ${list.map((e, i) => `<button class="rep-item" data-i="${i}">${STOCK.includes(e.img) ? `<img class="thumb" src="img/${e.img}_0.jpg" alt="">` : ''}<span><b>${esc(e.nom)}</b><br><span class="muted">${esc(e.machine || '')}</span></span></button>`).join('') || `<p class="muted">${q ? 'Aucun résultat : utilise « Autre exercice » plus bas.' : 'Rien d\'autre dans ce groupe.'}</p>`}`;
+      const qi = dyn.querySelector('#rep-q');
+      qi.oninput = () => { query = qi.value; const pos = qi.selectionStart; drawList(); const n = dyn.querySelector('#rep-q'); n.focus(); n.setSelectionRange(pos, pos); };
+      dyn.querySelectorAll('[data-g]').forEach((b) => { b.onclick = () => { gid = b.dataset.g; query = ''; drawList(); }; });
       dyn.querySelectorAll('[data-i]').forEach((b) => { b.onclick = () => choose(list[+b.dataset.i]); });
     };
     drawList();
