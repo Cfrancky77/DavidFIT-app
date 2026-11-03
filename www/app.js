@@ -137,6 +137,22 @@
   }
 
   // Clé de regroupement : même nom d'exercice = même suivi, quel que soit le programme.
+  // Remplace window.prompt (non pris en charge dans Electron / version PC) par une boîte de dialogue de l'appli.
+  function ask(msg, def = '', long = false) {
+    return new Promise((resolve) => {
+      const o = document.createElement('div'); o.className = 'sheet-overlay';
+      o.innerHTML = `<div class="sheet" role="dialog"><p style="white-space:pre-line;margin-top:0">${esc(msg)}</p>
+        ${long ? `<textarea class="field" id="ask-v" rows="6"></textarea>` : `<input class="field" id="ask-v">`}
+        <div class="row" style="gap:8px;margin-top:10px"><button class="btn ghost" id="ask-no" style="flex:1">Annuler</button><button class="btn" id="ask-ok" style="flex:1">OK</button></div></div>`;
+      const inp = o.querySelector('#ask-v'); inp.value = def;
+      const end = (v) => { o.remove(); resolve(v); };
+      o.querySelector('#ask-ok').onclick = () => end(inp.value);
+      o.querySelector('#ask-no').onclick = () => end(null);
+      o.onclick = (e) => { if (e.target === o) end(null); };
+      inp.onkeydown = (e) => { if (e.key === 'Enter' && !long) end(inp.value); else if (e.key === 'Escape') end(null); };
+      document.body.appendChild(o); inp.focus(); if (long) inp.select();
+    });
+  }
   const nameKey = (n) => String(n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
   const exName = (x, exId) => (x.exNoms && x.exNoms[exId]) || (exById(exId) || {}).nom || null;
   // Dernières séries faites pour cet exercice (même id, sinon même nom dans un autre programme).
@@ -374,8 +390,8 @@
       html += `<a class="card link" href="#/historique/${x.id}"><div class="row between"><b>${esc(nomSeance(x))}</b><span class="muted">${fmtDate(x.date)}</span></div><div class="muted">${nb} séries</div></a>`;
     });
     view.innerHTML = html;
-    $('#goal').onclick = () => {
-      const v = prompt('Objectif de séances par semaine', goal);
+    $('#goal').onclick = async () => {
+      const v = await ask('Objectif de séances par semaine', goal);
       const n = parseInt(v, 10);
       if (v !== null && n >= 1 && n <= 14) { save('tr_goal', n); viewHome(); }
     };
@@ -569,9 +585,9 @@
       card.querySelector('[data-del]').onclick = () => {
         if (cur.exercices[exId].length > 1) { cur.exercices[exId].pop(); persist(); renderSession(base, cur); }
       };
-      card.querySelector('[data-edit-machine]').onclick = () => {
+      card.querySelector('[data-edit-machine]').onclick = async () => {
         if (!ex.remplace) return editMachine(ex, () => renderSession(base, cur));
-        const v = prompt(`Machine pour « ${ex.nom} »`, ex.machine || '');
+        const v = await ask(`Machine pour « ${ex.nom} »`, ex.machine || '');
         if (v === null) return;
         const ov = ex.ajoute ? cur.ajouts.find((a) => a.id === exId) : cur.remplace[exId];
         ov.machine = v.trim(); persist(); renderSession(base, cur);
@@ -714,9 +730,9 @@
     document.body.appendChild(o);
   }
 
-  function editMachine(ex, done) {
+  async function editMachine(ex, done) {
     const m = getMachines();
-    const v = prompt(`Machine pour « ${ex.nom} » (vide = valeur par défaut : ${machineName(ex.machine)})`, m[ex.id] || '');
+    const v = await ask(`Machine pour « ${ex.nom} » (vide = valeur par défaut : ${machineName(ex.machine)})`, m[ex.id] || '');
     if (v === null) return;
     if (v.trim()) m[ex.id] = v.trim(); else delete m[ex.id];
     save(K.machines, m); done();
@@ -1021,7 +1037,7 @@
   async function shareSeance(s) {
     const txt = JSON.stringify({ app: 'training', type: 'programmes', v: 1, seances: [exportable(s)] }, null, 1);
     try { await navigator.clipboard.writeText(txt); alert('Programme copié : colle-le dans un message ou une note. Il s\'importe avec Entraînement → Importer.'); }
-    catch (e) { prompt('Copie ce texte :', txt); }
+    catch (e) { await ask('Copie ce texte :', txt, true); }
   }
   function importText(txt) {
     let d;
@@ -1042,9 +1058,9 @@
     alert(`${ok.length} programme(s) importé(s) : ${ok.map((x) => x.nom).join(', ')}`);
     viewEntrainement();
   }
-  function importFile() {
+  async function importFile() {
     const choice = confirm('Importer un fichier (tableau .csv ou .json) ?\n\nOK = choisir un fichier\nAnnuler = coller un texte');
-    if (!choice) { const t = prompt('Colle le programme (lignes du tableau ou texte partagé depuis l\'appli) :'); if (t) importText(t); return; }
+    if (!choice) { const t = await ask('Colle le programme (lignes du tableau ou texte partagé depuis l\'appli) :', '', true); if (t) importText(t); return; }
     const inp = document.createElement('input');
     inp.type = 'file'; inp.accept = '.csv,.json,.txt,text/csv,application/json,text/plain';
     inp.onchange = () => { const f = inp.files && inp.files[0]; if (!f) return; f.text().then(importText); };
@@ -1133,7 +1149,7 @@
       }
     } catch (e) { if (e && e.name === 'AbortError') return; }
     try { await navigator.clipboard.writeText(txt.replace(/^﻿/, '')); alert('Tableau copié : colle-le dans un tableur (Excel, LibreOffice, Google Sheets), il se répartit en colonnes.'); }
-    catch (e) { prompt('Copie ce texte :', txt); }
+    catch (e) { await ask('Copie ce texte :', txt, true); }
   }
 
   // ---------- programmes du coach : récupérés depuis un tableau en ligne ----------
@@ -1143,8 +1159,8 @@
   //  - programmesUrl : un seul lien CSV (colonne Client pour cibler un élève).
   // Lien du tableau modifiable sans nouvel APK (Réglages → Changer le tableau du coach).
   try { const o = JSON.parse(localStorage.getItem('tr_sheet') || 'null'); if (o) BR.programmesSheet = o; } catch (e) { /* ignore */ }
-  function changeSheet() {
-    const v = prompt('Colle le lien du Google Sheets du coach (vide = tableau d\'origine) :', BR.programmesSheet ? `https://docs.google.com/spreadsheets/d/${BR.programmesSheet}/edit` : '');
+  async function changeSheet() {
+    const v = await ask('Colle le lien du Google Sheets du coach (vide = tableau d\'origine) :', BR.programmesSheet ? `https://docs.google.com/spreadsheets/d/${BR.programmesSheet}/edit` : '');
     if (v === null) return;
     const m = v.match(/\/d\/([\w-]{20,})/) || v.trim().match(/^([\w-]{20,})$/);
     if (v.trim() && !m) return alert('Lien non reconnu : il doit contenir /spreadsheets/d/…');
