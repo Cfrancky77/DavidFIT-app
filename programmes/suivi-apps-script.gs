@@ -4,6 +4,7 @@
  * Installation (une seule fois, depuis le compte du coach) : voir programmes/SUIVI.md.
  * Le Sheets qui reçoit les retours ne doit JAMAIS être partagé par lien : il est séparé du tableau des programmes.
  * Chaque séance envoyée par l'appli = une ou plusieurs lignes (une par exercice). Une séance déjà reçue est ignorée (id).
+ * Les lignes vont dans l'onglet général « Suivi » ET dans un onglet propre à l'élève, nommé d'après son code client (créé au premier envoi).
  */
 const ONGLET = 'Suivi';
 const ENTETES = ['Reçu le', 'Id séance', 'Date', 'Code client', 'Séance', 'Exercice', 'Séries (kg × reps, ou durée)', 'Charge max (kg)', 'Volume (kg)', 'Échauffement', 'Finisher', 'Note'];
@@ -38,7 +39,8 @@ function doPost(e) {
         Math.max.apply(null, kgs.length ? kgs : [0]), Math.round(volume), p.echauffement ? 'oui' : 'non', p.finisher ? 'oui' : 'non', texte_(p.note, 300)];
     });
     if (!lignes.length) lignes.push([recu, id, texte_(p.date, 30), texte_(p.client, 60), texte_(p.seance, 80), '', '', 0, 0, p.echauffement ? 'oui' : 'non', p.finisher ? 'oui' : 'non', texte_(p.note, 300)]);
-    feuille.getRange(feuille.getLastRow() + 1, 1, lignes.length, ENTETES.length).setValues(lignes);
+    ajouter_(feuille, lignes);
+    ajouter_(feuilleClient_(p.client), lignes);
     return reponse_({ ok: true });
   } finally {
     lock.releaseLock();
@@ -48,11 +50,23 @@ function doPost(e) {
 // Pour vérifier le déploiement : ouvrir l'adresse dans un navigateur affiche {"ok":true}.
 function doGet() { return reponse_({ ok: true, service: 'suivi' }); }
 
-function feuille_() {
+function ajouter_(f, lignes) {
+  f.getRange(f.getLastRow() + 1, 1, lignes.length, ENTETES.length).setValues(lignes);
+}
+
+// Onglet de l'élève : nom = code client nettoyé (interdits dans un nom d'onglet : [ ] * ? : / \), 100 caractères max.
+function feuilleClient_(code) {
+  let nom = String(code).replace(/[\[\]*?:\/\\]/g, '').trim().slice(0, 100) || 'Sans code';
+  if (nom.toLowerCase() === ONGLET.toLowerCase()) nom = nom + ' (élève)';
+  return feuille_(nom);
+}
+
+function feuille_(nomOnglet) {
   const classeur = SpreadsheetApp.getActiveSpreadsheet();
-  let f = classeur.getSheetByName(ONGLET);
+  const nom = nomOnglet || ONGLET;
+  let f = classeur.getSheetByName(nom);
   if (!f) {
-    f = classeur.insertSheet(ONGLET);
+    f = classeur.insertSheet(nom);
     f.getRange(1, 1, 1, ENTETES.length).setValues([ENTETES]).setFontWeight('bold');
     f.setFrozenRows(1);
   }

@@ -16,7 +16,7 @@ Les retours arrivent dans un Google Sheets **privé**, un exercice par ligne.
 5. Copier l'adresse **Application Web** (elle finit par `/exec`). L'ouvrir dans un navigateur : elle doit afficher `{"ok":true,"service":"suivi"}`.
 6. Donner **uniquement cette adresse `/exec`** à la personne qui gère l'appli (jamais le lien du Google Sheets de suivi : il ne doit figurer nulle part dans l'appli ni dans le code). Elle la met dans `www/branding.js` (`partageUrl`) puis publie une nouvelle version. Tant qu'elle est vide, l'option n'apparaît pas chez les élèves.
 
-L'onglet **Suivi** se crée au premier envoi. Pour lire : *Données → Créer un filtre* (par code client), ou un tableau croisé dynamique pour suivre la charge par exercice.
+L'onglet **Suivi** (tous les élèves) se crée au premier envoi, ainsi qu'un **onglet par élève** nommé d'après son code client (ex. FC202611), alimenté automatiquement. Pour lire un seul élève : ouvrir son onglet. Pour tout voir : *Données → Créer un filtre* (par code client), ou un tableau croisé dynamique pour suivre la charge par exercice.
 Modifier le script plus tard : *Déployer → Gérer les déploiements → modifier → Nouvelle version* (l'adresse ne change pas).
 
 ## À savoir
