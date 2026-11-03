@@ -22,4 +22,4 @@ Dans Google Sheets, une liste déroulante ne peut pas dépendre d'une autre cell
 3. Validation de **D2:D500** (Exercice) : *Menu déroulant (depuis une plage)* = `Listes!B2:B900`, option « Afficher un avertissement ». C'est la liste complète par défaut.
 4. *Extensions → Apps Script* : coller le contenu de `groupe-apps-script.gs`, Enregistrer. Rien d'autre à faire.
 
-Test : en C2 choisir « Jambes » → la liste en D2 ne montre que des exercices de jambes. Les lignes dont le groupe n'a pas été (re)choisi gardent la liste complète.
+Un message « Liste … appliquée » s'affiche en bas à droite à chaque choix de groupe (s'il n'apparaît jamais, le script n'est pas enregistré ou pas dans ce Sheets). Test : en C2 choisir « Jambes » → la liste en D2 ne montre que des exercices de jambes. Les lignes dont le groupe n'a pas été (re)choisi gardent la liste complète.
