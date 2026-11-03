@@ -1,0 +1,20 @@
+{
+  "name": "training",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Suivi des séances en salle (Basic-Fit) : machines conseillées, charges, minuteur, agenda et progression",
+  "scripts": {
+    "android:add": "cap add android",
+    "android:sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/app-launcher": "8.0.1",
+    "@capacitor/core": "8.6.0",
+    "@capacitor/haptics": "8.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
+    "@capacitor/cli": "8.6.0"
+  }
+}

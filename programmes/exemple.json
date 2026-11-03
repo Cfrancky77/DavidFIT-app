@@ -1,0 +1,19 @@
+{
+  "app": "training",
+  "type": "programmes",
+  "v": 1,
+  "seances": [
+    {
+      "nom": "Exemple : bras express",
+      "niveau": "Intermédiaire",
+      "consigne": "Enchaîne sans traîner, 60 s de repos max.",
+      "echauffement": { "exercice": "Rameur", "duree_min": 5, "resistance": "Modérée" },
+      "exercices": [
+        { "nom": "Curl biceps poulie basse", "series": 4, "reps": "12", "repos_s": 60, "machine": "Poulie basse + barre droite", "img": "curl_poulie_basse" },
+        { "nom": "Extension triceps poulie haute", "series": 4, "reps": "12", "repos_s": 60, "machine": "Poulie haute + corde", "img": "extension_triceps" },
+        { "nom": "Curl marteau", "series": 3, "reps": "10", "par_cote": true, "repos_s": 45, "machine": "Haltères", "img": "curl_marteau" }
+      ],
+      "finisher": { "exercice": "Pompes", "objectif": "2 séries au maximum." }
+    }
+  ]
+}

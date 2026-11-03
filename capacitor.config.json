@@ -1,0 +1,10 @@
+{
+  "appId": "com.example.training",
+  "appName": "Training",
+  "webDir": "www",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}

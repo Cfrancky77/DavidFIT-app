@@ -1,0 +1,52 @@
+{
+  "name": "training-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Training pour PC (Linux) : la même appli que sur Android, dans une fenêtre",
+  "author": "FCDI",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --linux AppImage --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "fr.franck.training.desktop",
+    "productName": "Training",
+    "executableName": "training",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../www",
+        "to": "www"
+      }
+    ],
+    "linux": {
+      "target": "AppImage",
+      "category": "Sports",
+      "icon": "../assets/icon-only.png",
+      "syncDesktopName": true
+    },
+    "appImage": {
+      "artifactName": "Training-${arch}.AppImage"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Cfrancky77",
+        "repo": "depot"
+      }
+    ]
+  },
+  "desktopName": "training.desktop"
+}
