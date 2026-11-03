@@ -13,6 +13,8 @@ window.BRANDING = {
   ongletCommun: 'Commun',
   // Dépôt GitHub public où sont publiés les APK (bandeau de mise à jour). Ex. 'proprietaire/depot'.
   majDepot: '',
+  // Partage facultatif de la progression avec le coach : adresse du script Google (programmes/suivi-apps-script.gs).
+  partageUrl: '',
   programmesUrl: '',
   contact: { email: '', telephone: '', site: '', instagram: '', adresse: '' }
 };

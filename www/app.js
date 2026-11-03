@@ -113,10 +113,14 @@
   function showPhoto(src, stock) {
     const o = document.createElement('div');
     o.className = 'photo-overlay';
-    o.innerHTML = stock
-      ? `<div class="stock-pair"><img src="img/${stock}_0.jpg" alt="Départ"><img src="img/${stock}_1.jpg" alt="Arrivée"><p class="muted">Image indicative · touche pour fermer</p></div>`
-      : `<img src="${src}" alt="Photo de la machine">`;
-    o.onclick = () => o.remove();
+    const close = () => { o.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    o.innerHTML = `<button class="photo-close" aria-label="Fermer l'image">✕ Fermer</button><div class="stock-pair">${stock
+      ? `<img src="img/${stock}_0.jpg" alt="Départ"><img src="img/${stock}_1.jpg" alt="Arrivée"><p class="photo-hint">Image indicative</p>`
+      : `<img src="${src}" alt="Photo de la machine">`}
+      <p class="photo-hint">Touche l'écran ou « Fermer » pour revenir</p></div>`;
+    o.onclick = close;
+    document.addEventListener('keydown', onKey);
     document.body.appendChild(o);
   }
   const thumbHtml = (m, cls = 'thumb') => m.photo
@@ -239,6 +243,50 @@
     // « Passer » pendant l'échauffement saute directement à la récupération
     const done = timer.onDone; closeTimer(); if (done) done();
   };
+
+  // ---------- partage de la progression avec le coach (facultatif, choix de l'élève) ----------
+  // Après chaque séance, un résumé est envoyé à BR.partageUrl (script Google du coach). File d'attente locale :
+  // un envoi raté (hors ligne…) repart au prochain lancement ou bouton « Envoyer maintenant ». Le script ignore les doublons (id).
+  const shareOn = () => !!BR.partageUrl && !!load('tr_partage', false) && !!load('tr_client', '');
+  function sharePayload(x) {
+    const exercices = Object.entries(x.exercices || {}).map(([id, sets]) => ({
+      nom: exName(x, id) || id,
+      series: sets.filter((st) => st.done).map((st) => ({ kg: num(st.kg) || 0, reps: num(st.reps) || 0, duree: !!st.sec })),
+    })).filter((e) => e.series.length);
+    return { v: 1, id: x.id, client: load('tr_client', ''), date: x.date, fin: x.fin || '', seance: nomSeance(x), echauffement: !!x.echauffement, finisher: !!x.finisher, note: x.note || '', exercices };
+  }
+  async function postShare(p) {
+    const opts = { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(p) };
+    try {
+      const r = await fetch(BR.partageUrl, opts);
+      if (!r.ok) return false;
+      try { const j = await r.json(); return !!(j && j.ok); } catch (e) { return true; }
+    } catch (e) {
+      // réponse illisible (CORS) mais envoi possible : on renvoie sans lire la réponse ; un doublon est ignoré côté script
+      try { await fetch(BR.partageUrl, { ...opts, mode: 'no-cors' }); return true; } catch (e2) { return false; }
+    }
+  }
+  let sharing = false;
+  async function flushShare() {
+    if (sharing || !shareOn()) return 0;
+    sharing = true; let sent = 0;
+    try {
+      let q = load('tr_outbox', []);
+      while (q.length) {
+        const first = q[0];
+        if (!(await postShare(first))) break;
+        q = load('tr_outbox', []).filter((x) => x.id !== first.id); save('tr_outbox', q); sent++;
+      }
+    } finally { sharing = false; }
+    return sent;
+  }
+  function queueShare(x) {
+    if (!shareOn()) return;
+    const q = load('tr_outbox', []);
+    if (!q.some((p) => p.id === x.id)) { q.push(sharePayload(x)); save('tr_outbox', q); }
+    flushShare();
+  }
+  window.addEventListener('online', () => { flushShare(); });
 
   // ---------- séance en cours ----------
   // Séries vierges d'un exercice, charge reprise de la dernière fois (n séries, par défaut ex.series).
@@ -524,6 +572,7 @@
       if (!nbDone && !confirm('Aucune série cochée. Enregistrer quand même ?')) return;
       cur.fin = new Date().toISOString();
       const h = getHistory(); h.push(cur); setHistory(h); setCurrent(null);
+      queueShare(cur);
       location.hash = '#/historique/' + cur.id;
     };
     $('#abandon').onclick = () => { if (confirm('Abandonner la séance ? Les saisies seront perdues.')) { setCurrent(null); location.hash = '#/'; } };
@@ -749,6 +798,10 @@
       ${hasCoachSource() ? `<label class="lbl" for="client">Code client (donné par ${esc(BR.coach || 'ton coach')})</label>
       <input class="field" id="client" maxlength="60" autocapitalize="none" value="${esc(load('tr_client', ''))}" placeholder="ex. MD202615">
       <div class="muted" style="font-size:12px">Sert à recevoir ton programme personnalisé. Vide : seulement les programmes communs.</div>` : ''}</div>
+      ${BR.partageUrl ? `<div class="card"><h3>Partage avec ${esc(BR.coach || 'ton coach')}</h3>
+      <label class="row"><input type="checkbox" id="share" ${load('tr_partage', false) ? 'checked' : ''} ${load('tr_client', '') ? '' : 'disabled'}> <span>Partager ma progression avec mon coach</span></label>
+      <div class="muted" style="font-size:12px;margin-top:6px">${load('tr_client', '') ? '' : 'Renseigne d\'abord ton code client. '}Après chaque séance, l'appli envoie ton code client, la date, les exercices, les charges, répétitions ou durées et ta note. Rien d'autre : ni prénom, ni taille, ni poids. Tu peux arrêter quand tu veux ; ce qui a déjà été envoyé reste chez ton coach.</div>
+      ${shareOn() ? `<div class="row between" style="margin-top:8px"><span class="muted" id="share-state"></span><button class="btn small ghost" id="share-now">Envoyer maintenant</button></div>` : ''}</div>` : ''}
       <div class="card"><h3>Apparence</h3><div class="seg" id="theme">
       ${[['system', 'Système'], ['light', 'Clair'], ['dark', 'Sombre']].map(([k, l]) => `<button data-t="${k}" class="${theme === k ? 'on' : ''}">${l}</button>`).join('')}
       </div></div>
@@ -768,6 +821,27 @@
     if ($('#client')) $('#client').onchange = (e) => { save('tr_client', e.target.value.trim()); syncCoach(true).then(() => {}); };
     $('#replay-ob').onclick = () => { save('tr_onboarded', false); route(); };
     $('#chg-sheet').onclick = changeSheet;
+    if ($('#share')) {
+      $('#share').onchange = (e) => {
+        save('tr_partage', e.target.checked);
+        if (e.target.checked && h.length && confirm(`Envoyer aussi tes ${h.length} séance(s) déjà enregistrée(s) à ton coach ?\n\nOK = les envoyer\nAnnuler = seulement les prochaines`)) {
+          const q = load('tr_outbox', []); const ids = new Set(q.map((p) => p.id));
+          h.forEach((x) => { if (!ids.has(x.id)) q.push(sharePayload(x)); });
+          save('tr_outbox', q);
+        }
+        viewReglages(); flushShare().then(() => { if (location.hash === '#/reglages') viewReglages(); });
+      };
+    }
+    if ($('#share-state')) {
+      const left = () => load('tr_outbox', []).length;
+      $('#share-state').textContent = left() ? `${left()} séance(s) en attente d'envoi` : 'Tout est envoyé ✓';
+      $('#share-now').onclick = async () => {
+        $('#share-now').disabled = true; $('#share-state').textContent = 'Envoi…';
+        await flushShare();
+        $('#share-state').textContent = left() ? `${left()} séance(s) pas encore envoyée(s) : vérifie la connexion.` : 'Tout est envoyé ✓';
+        $('#share-now').disabled = false;
+      };
+    }
     if ($('#chk-upd')) $('#chk-upd').onclick = () => checkUpdate(true).then((u) => { if (!u) alert(navigator.onLine === false ? 'Pas de connexion.' : `Tu as la dernière version (v${window.APP_VERSION || 'dev'}).`); viewReglages(); });
     const showImc = () => { $('#imc').innerHTML = imcHtml(); };
     $('#taille').oninput = (e) => { save('tr_taille', e.target.value.trim()); showImc(); };
@@ -1297,6 +1371,7 @@
   window.addEventListener('hashchange', route);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#timer').hidden && !$('#timer').classList.contains('finished')) updateTimer(); });
   route();
+  flushShare();
   checkUpdate(false).then((u) => { if (u && /^#\/?$|^$/.test(location.hash)) route(); });
   syncCoach(false).then((changed) => { if (changed && /^#\/(entrainement)?$|^$/.test(location.hash)) route(); });
 })();
