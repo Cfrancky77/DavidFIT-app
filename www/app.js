@@ -65,14 +65,15 @@
   // Réglage machine/photo d'un exercice ; à défaut, celui du même exercice des séances intégrées (même nom).
   const twinId = (ex) => { const k = String(ex.nom || '').trim().toLowerCase(); const t = DATA.seances.flatMap((s) => s.exercices).find((e) => e.id !== ex.id && e.nom.trim().toLowerCase() === k); return t && t.id; };
   function machineFor(ex) {
-    const M = getMachines(); const P = getPhotos(); const tw = twinId(ex);
-    const custom = M[ex.id] || (tw && M[tw]);
+    // Exercice remplacé en séance : ni réglage machine, ni photo, ni image de l'exercice d'origine.
+    const M = getMachines(); const P = getPhotos(); const tw = ex.remplace ? null : twinId(ex);
+    const custom = ex.remplace ? null : (M[ex.id] || (tw && M[tw]));
     return {
       main: custom || machineName(ex.machine),
       custom: !!custom,
       alts: (ex.alternatives || []).map(machineName),
-      photo: P[ex.id] || (tw && P[tw]) || null,
-      stock: ex.img || ex.id,
+      photo: ex.remplace ? null : (P[ex.id] || (tw && P[tw]) || null),
+      stock: ex.remplace ? (ex.img || null) : (ex.img || ex.id),
     };
   }
 
@@ -130,13 +131,16 @@
   const nameKey = (n) => String(n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
   const exName = (x, exId) => (x.exNoms && x.exNoms[exId]) || (exById(exId) || {}).nom || null;
   // Dernières séries faites pour cet exercice (même id, sinon même nom dans un autre programme).
-  function lastSetsFor(exId) {
+  // `nom` : nom de l'exercice quand il a été remplacé en séance (on cherche alors seulement par ce nom).
+  function lastSetsFor(exId, nom) {
     const h = getHistory();
-    const key = nameKey((exById(exId) || {}).nom);
+    const orig = (exById(exId) || {}).nom;
+    const swapped = !!nom && nameKey(nom) !== nameKey(orig);
+    const key = nameKey(nom || orig);
     for (let i = h.length - 1; i >= 0; i--) {
       const x = h[i];
       for (const [id, sets] of Object.entries(x.exercices || {})) {
-        if ((id === exId || (key && nameKey(exName(x, id)) === key)) && sets.some((st) => st.done)) return { date: x.date, sets };
+        if (((!swapped && id === exId) || (key && nameKey(exName(x, id)) === key)) && sets.some((st) => st.done)) return { date: x.date, sets };
       }
     }
     return null;
@@ -237,15 +241,17 @@
   };
 
   // ---------- séance en cours ----------
+  // Séries vierges d'un exercice, charge reprise de la dernière fois (n séries, par défaut ex.series).
+  function freshSets(ex, n) {
+    const last = lastSetsFor(ex.id, ex.nom);
+    return Array.from({ length: n || ex.series }, (_, i) => {
+      const prev = last && last.sets[i];
+      return { kg: prev && prev.kg !== '' ? prev.kg : '', reps: repsMin(ex.reps), done: false, ...(timedSec(ex.reps) ? { sec: true } : {}) };
+    });
+  }
   function newSession(seance) {
     const exercices = {};
-    seance.exercices.forEach((ex) => {
-      const last = lastSetsFor(ex.id);
-      exercices[ex.id] = Array.from({ length: ex.series }, (_, i) => {
-        const prev = last && last.sets[i];
-        return { kg: prev && prev.kg !== '' ? prev.kg : '', reps: repsMin(ex.reps), done: false, ...(timedSec(ex.reps) ? { sec: true } : {}) };
-      });
-    });
+    seance.exercices.forEach((ex) => { exercices[ex.id] = freshSets(ex); });
     return { id: 'S' + Date.now(), seanceId: seance.id, seanceNom: seance.nom, exNoms: Object.fromEntries(seance.exercices.map((e) => [e.id, e.nom])), date: new Date().toISOString(), exercices, echauffement: false, finisher: false, note: '' };
   }
 
@@ -399,7 +405,12 @@
     }).join('');
   }
 
-  function renderSession(s, cur) {
+  // Programme tel qu'il est suivi dans cette séance : exercices remplacés (cur.remplace) appliqués.
+  const withRemplace = (base, cur) => (cur && cur.remplace && Object.keys(cur.remplace).length
+    ? { ...base, exercices: base.exercices.map((e) => (cur.remplace[e.id] ? { ...e, ...cur.remplace[e.id] } : e)) } : base);
+
+  function renderSession(base, cur) {
+    const s = withRemplace(base, cur);
     const persist = () => setCurrent(cur);
     let html = `<div class="card"><div class="row between"><b>Progression</b><span class="muted" id="prog-txt"></span></div><div class="progress"><div id="prog-bar"></div></div></div>
       ${hasWarm(s) || s.consigne ? `<div class="card">${hasWarm(s) ? `<label class="row"><input type="checkbox" id="warm" ${cur.echauffement ? 'checked' : ''}>
@@ -410,14 +421,15 @@
 
     s.exercices.forEach((ex) => {
       const m = machineFor(ex);
-      const last = lastSetsFor(ex.id);
+      const last = lastSetsFor(ex.id, ex.nom);
       const sets = cur.exercices[ex.id];
       html += `<div class="card" data-ex="${ex.id}">
-        <div class="row between"><h3>${esc(ex.nom)}</h3><span class="badge">${ex.series} × ${esc(ex.reps)}${ex.par_cote ? '/côté' : ''}</span></div>${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
+        <div class="row between"><h3>${esc(ex.nom)}</h3><span class="badge">${ex.series} × ${esc(ex.reps)}${ex.par_cote ? '/côté' : ''}</span></div>${ex.remplace ? `<div class="muted">↻ Remplace : ${esc(ex.de)}</div>` : ''}${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
         ${last ? `<div class="muted">Précédent (${fmtShort(last.date)}) : ${esc(last.sets.filter((x) => x.done).map((x) => fmtSet(x)).join(', '))}</div>` : ''}
         <div class="machine"><div class="row">${thumb(m)}<span>Machine : <b>${esc(m.main)}</b>${m.custom ? ' <span class="muted">(perso)</span>' : ''}</span>
           <button class="btn small ghost" data-edit-machine="${ex.id}">Modifier</button></div>
-          ${m.alts.length ? `<div class="alt">Si occupée : ${esc(m.alts.join(' · '))}</div>` : ''}</div>
+          ${m.alts.length ? `<div class="alt">Si occupée : ${esc(m.alts.join(' · '))}</div>` : ''}
+          <div class="row" style="margin-top:6px"><button class="btn small ghost" data-replace="${ex.id}">⇄ Remplacer l'exercice</button></div></div>
         <table class="sets"><thead><tr><th>Série</th><th>Kg</th><th>${timedSec(ex.reps) ? 'Durée' : 'Reps'}</th><th></th><th>Repos</th></tr></thead><tbody>
         ${sets.map((st, i) => `<tr class="${st.done ? 'done' : ''}" data-i="${i}">
           <td>${i + 1}</td>
@@ -498,7 +510,13 @@
       card.querySelector('[data-del]').onclick = () => {
         if (cur.exercices[exId].length > 1) { cur.exercices[exId].pop(); persist(); renderSession(s, cur); }
       };
-      card.querySelector('[data-edit-machine]').onclick = () => editMachine(ex, () => renderSession(s, cur));
+      card.querySelector('[data-edit-machine]').onclick = () => {
+        if (!ex.remplace) return editMachine(ex, () => renderSession(base, cur));
+        const v = prompt(`Machine pour « ${ex.nom} »`, ex.machine || '');
+        if (v === null) return;
+        cur.remplace[exId].machine = v.trim(); persist(); renderSession(base, cur);
+      };
+      card.querySelector('[data-replace]').onclick = () => openReplace(base, ex, cur, () => renderSession(base, cur));
     });
 
     $('#finish').onclick = () => {
@@ -518,6 +536,73 @@
     const idx = s.exercices.indexOf(ex);
     const nx = s.exercices[idx + 1];
     return nx ? `${nx.nom} (${machineFor(nx).main})` : (hasFin(s) ? `Finisher : ${s.finisher.exercice}` : 'Fin de la séance');
+  }
+
+  // ---------- remplacer un exercice (cette séance seulement) ----------
+  const REPL = window.REPLACEMENTS || { groupes: [] };
+  // Groupe musculaire d'un exercice : par son image, sinon par un mot de son nom.
+  function groupOf(ex) {
+    const img = ex.img || ex.id;
+    const byImg = REPL.groupes.find((g) => g.exercices.some((e) => e.img === img));
+    if (byImg) return byImg.id;
+    const words = nameKey(ex.nom).split(' ');
+    const byWord = REPL.groupes.find((g) => g.mots.some((m) => words.some((w) => w.startsWith(m))));
+    return byWord ? byWord.id : null;
+  }
+  function applyReplacement(base, cur, exId, rep) {
+    const ex = base.exercices.find((e) => e.id === exId);
+    const sets = cur.exercices[exId] || [];
+    if (sets.some((x) => x.done) && !confirm('Les séries déjà cochées de cet exercice seront perdues. Continuer ?')) return false;
+    cur.remplace = cur.remplace || {};
+    if (!rep) { // retour à l'exercice d'origine
+      delete cur.remplace[exId]; cur.exNoms[exId] = ex.nom;
+      cur.exercices[exId] = freshSets(ex, sets.length);
+      return true;
+    }
+    // Séries et repos conservés ; reps conservées sauf passage répétitions ↔ durée.
+    const reps = timedSec(rep.reps) ? rep.reps : (timedSec(ex.reps) ? (rep.reps || '10') : ex.reps);
+    cur.remplace[exId] = { nom: rep.nom, machine: rep.machine || '', img: rep.img || '', reps, par_cote: !!rep.par_cote, alternatives: [], note: '', remplace: true, de: ex.nom };
+    cur.exNoms[exId] = rep.nom;
+    cur.exercices[exId] = freshSets({ ...ex, ...cur.remplace[exId] }, sets.length);
+    return true;
+  }
+  function openReplace(base, ex, cur, done) {
+    const orig = base.exercices.find((e) => e.id === ex.id);
+    // exercices déjà présents dans la séance : pas proposés
+    const used = new Set(withRemplace(base, cur).exercices.map((e) => nameKey(e.nom)));
+    let gid = groupOf(ex) || (REPL.groupes[0] || {}).id;
+    const o = document.createElement('div'); o.className = 'sheet-overlay';
+    const close = () => o.remove();
+    const choose = (rep) => { if (applyReplacement(base, cur, ex.id, rep)) { setCurrent(cur); close(); done(); } };
+    o.innerHTML = `<div class="sheet" role="dialog" aria-label="Remplacer l'exercice">
+      <div class="row between"><h3>Remplacer « ${esc(ex.nom)} »</h3><button class="btn small ghost" data-close aria-label="Fermer">✕</button></div>
+      <p class="muted">Pour cette séance seulement : le programme n'est pas modifié. Séries et repos conservés.</p>
+      <div id="rep-dyn"></div>
+      <h4 style="margin:14px 0 6px">Autre exercice</h4>
+      <input class="field" id="rep-nom" placeholder="Nom de l'exercice">
+      <input class="field" id="rep-mach" placeholder="Machine (facultatif)" style="margin-top:6px">
+      <button class="btn block" id="rep-own" style="margin-top:8px">Utiliser cet exercice</button>
+      ${ex.remplace ? `<p></p><button class="btn block ghost" id="rep-reset">Remettre « ${esc(orig.nom)} »</button>` : ''}</div>`;
+    const dyn = o.querySelector('#rep-dyn');
+    const drawList = () => {
+      const g = REPL.groupes.find((x) => x.id === gid) || { exercices: [] };
+      const list = g.exercices.filter((e) => !used.has(nameKey(e.nom)));
+      dyn.innerHTML = `<div class="chips">${REPL.groupes.map((x) => `<button class="chip ${x.id === gid ? 'on' : ''}" data-g="${x.id}">${esc(x.nom)}</button>`).join('')}</div>
+        ${list.map((e, i) => `<button class="rep-item" data-i="${i}">${STOCK.includes(e.img) ? `<img class="thumb" src="img/${e.img}_0.jpg" alt="">` : ''}<span><b>${esc(e.nom)}</b><br><span class="muted">${esc(e.machine || '')}</span></span></button>`).join('') || '<p class="muted">Rien d\'autre dans ce groupe.</p>'}`;
+      dyn.querySelectorAll('[data-g]').forEach((b) => { b.onclick = () => { gid = b.dataset.g; drawList(); }; });
+      dyn.querySelectorAll('[data-i]').forEach((b) => { b.onclick = () => choose(list[+b.dataset.i]); });
+    };
+    drawList();
+    o.querySelector('[data-close]').onclick = close;
+    o.onclick = (e) => { if (e.target === o) close(); };
+    o.querySelector('#rep-own').onclick = () => {
+      const nom = o.querySelector('#rep-nom').value.trim();
+      if (!nom) return alert('Donne un nom à l\'exercice.');
+      choose({ nom: nom.slice(0, 80), machine: o.querySelector('#rep-mach').value.trim().slice(0, 80), img: imgByName(nom) || '' });
+    };
+    const resetBtn = o.querySelector('#rep-reset');
+    if (resetBtn) resetBtn.onclick = () => choose(null);
+    document.body.appendChild(o);
   }
 
   function editMachine(ex, done) {

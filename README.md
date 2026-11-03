@@ -7,6 +7,8 @@ Application Android de suivi des séances en salle, personnalisable pour un coac
 - Pour chaque exercice : la **machine conseillée** et une alternative si elle est occupée (modifiable).
 - Saisie **kg / reps** par série, charges de la séance précédente pré-remplies.
 - **Minuteur de repos** automatique quand on coche une série (vibration + bip).
+- **Remplacer un exercice** pendant la séance (machine occupée, douleur…) : propositions du même groupe musculaire (jambes, dos, pecs, épaules, bras, abdos) ou exercice libre ; séries et repos conservés, suivi et progression sous le nouveau nom, programme inchangé.
+- **Chrono d'échauffement** puis récupération, et **exercices en durée** (gainage : `Reps` = `45 s`).
 - Accueil avec la semaine en cours et la prochaine séance conseillée ; thème clair / sombre / système.
 - **Historique**, **agenda** mensuel des séances faites, **courbe de progression** des charges par exercice.
 - Export / import d'une sauvegarde (texte JSON).
