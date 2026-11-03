@@ -1226,6 +1226,45 @@
 
   // Éditeur : le brouillon vit en mémoire tant que la page est ouverte.
   let draft = null;
+  // Sélecteur d'exercice (éditeur de programme) : groupes, recherche, catalogue complet, ou nom libre.
+  function pickExercise(onPick, startGroup) {
+    let gid = startGroup || (REPL.groupes[0] || {}).id, query = '';
+    const o = document.createElement('div'); o.className = 'sheet-overlay';
+    const close = () => o.remove();
+    o.innerHTML = `<div class="sheet" role="dialog" aria-label="Choisir un exercice">
+      <div class="row between"><h3>Choisir un exercice</h3><button class="btn small ghost" data-close aria-label="Fermer">✕</button></div>
+      <div id="pk-dyn"></div>
+      <h4 style="margin:14px 0 6px">Autre exercice</h4>
+      <input class="field" id="pk-nom" placeholder="Nom de l'exercice">
+      <input class="field" id="pk-mach" placeholder="Machine (facultatif)" style="margin-top:6px">
+      <button class="btn block" id="pk-own" style="margin-top:8px">Utiliser cet exercice</button></div>`;
+    const dyn = o.querySelector('#pk-dyn');
+    const draw = () => {
+      const q = nameKey(query);
+      const cat = (window.CATALOGUE || []).filter((c) => (q ? true : c[2] === gid)).map((c) => ({ nom: c[1], machine: c[3], img: 'web:' + c[0] }));
+      const g = REPL.groupes.find((x) => x.id === gid) || { exercices: [] };
+      const list = (q ? REPL.groupes.flatMap((x) => x.exercices).concat(cat) : g.exercices.concat(cat))
+        .filter((e) => !q || nameKey(e.nom + ' ' + (e.machine || '')).includes(q));
+      dyn.innerHTML = `<input class="field" id="pk-q" type="search" placeholder="Rechercher (nom, machine…)" value="${esc(query)}" autocomplete="off">
+        <div class="chips" style="${q ? 'opacity:.5' : ''}">${REPL.groupes.map((x) => `<button class="chip ${x.id === gid && !q ? 'on' : ''}" data-g="${x.id}">${esc(x.nom)}</button>`).join('')}</div>
+        ${list.map((e, i) => `<button class="rep-item" data-i="${i}">${isImg(e.img) ? `<img class="thumb" src="${imgSrc(e.img, 0)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ''}<span><b>${esc(e.nom)}</b><br><span class="muted">${esc(e.machine || '')}</span></span></button>`).join('')
+        || '<p class="muted">Aucun résultat : utilise « Autre exercice » plus bas.</p>'}`;
+      const qi = dyn.querySelector('#pk-q');
+      qi.oninput = () => { query = qi.value; const pos = qi.selectionStart; draw(); const n = dyn.querySelector('#pk-q'); n.focus(); n.setSelectionRange(pos, pos); };
+      dyn.querySelectorAll('[data-g]').forEach((b) => { b.onclick = () => { gid = b.dataset.g; query = ''; draw(); }; });
+      dyn.querySelectorAll('[data-i]').forEach((b) => { b.onclick = () => { close(); onPick(list[+b.dataset.i]); }; });
+    };
+    draw();
+    o.querySelector('[data-close]').onclick = close;
+    o.onclick = (e) => { if (e.target === o) close(); };
+    o.querySelector('#pk-own').onclick = () => {
+      const nom = o.querySelector('#pk-nom').value.trim();
+      if (!nom) return alert('Donne un nom à l\'exercice.');
+      close(); onPick({ nom: nom.slice(0, 80), machine: o.querySelector('#pk-mach').value.trim().slice(0, 80), img: imgByName(nom) || '' });
+    };
+    document.body.appendChild(o);
+  }
+
   function viewEditer(id) {
     const existing = id !== 'new' ? getCustom().find((s) => s.id === id) : null;
     if (id !== 'new' && !existing) return viewEntrainement();
@@ -1240,10 +1279,12 @@
     const d = draft;
     const f = (path, val, ph, type = 'text', mode = '') => `<input class="field" data-p="${path}" type="${type}" ${mode ? `inputmode="${mode}"` : ''} value="${esc(val ?? '')}" placeholder="${esc(ph)}">`;
     let html = `<div class="card"><label class="lbl">Nom du programme</label>${f('nom', d.nom, 'ex. Push lundi')}
-      <label class="lbl">Niveau (facultatif)</label>${f('niveau', d.niveau, 'Débutant, Intermédiaire…')}
+      <label class="lbl">Niveau (facultatif)</label><select class="field" data-p="niveau">${['', 'Débutant', 'Intermédiaire', 'Avancé'].concat(d.niveau && !['Débutant', 'Intermédiaire', 'Avancé'].includes(d.niveau) ? [d.niveau] : []).map((n) => `<option value="${esc(n)}" ${n === (d.niveau || '') ? 'selected' : ''}>${n || '— Non précisé —'}</option>`).join('')}</select>
+      <datalist id="dl-cardio">${['Vélo', 'Rameur', 'Elliptique', 'Tapis de course', 'Marche inclinée', 'Corde à sauter', 'Escaliers'].map((n) => `<option value="${n}">`).join('')}</datalist>
+      <datalist id="dl-mach">${[...new Set(REPL.groupes.flatMap((g) => g.exercices.map((e) => e.machine)).filter(Boolean))].sort().map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
       <label class="lbl">Consigne (facultatif)</label>${f('consigne', d.consigne, 'ex. montée en charge sur le 1er exercice')}</div>
       <div class="card"><b>Échauffement</b><div class="grid2">
-      <div><label class="lbl">Exercice</label>${f('echauffement.exercice', d.echauffement.exercice, 'Vélo, rameur… (vide = aucun)')}</div>
+      <div><label class="lbl">Exercice</label>${f('echauffement.exercice', d.echauffement.exercice, 'Vélo, rameur… (vide = aucun)').replace('<input ', '<input list="dl-cardio" ')}</div>
       <div><label class="lbl">Durée (min)</label>${f('echauffement.duree_min', d.echauffement.duree_min, '5', 'text', 'numeric')}</div></div>
       <label class="lbl">Récupération après l'échauffement (s)</label>${f('echauffement.repos_s', warmRest(d), '60', 'text', 'numeric')}</div>`;
     d.exercices.forEach((e, i) => {
@@ -1251,8 +1292,9 @@
         <button class="btn small ghost" data-up="${i}" ${i === 0 ? 'disabled' : ''}>↑</button>
         <button class="btn small ghost" data-down="${i}" ${i === d.exercices.length - 1 ? 'disabled' : ''}>↓</button>
         <button class="btn small ghost" data-rmex="${i}">✕</button></span></div>
+        <button class="rep-item" data-pick="${i}" style="margin:8px 0">${isImg(e.img) ? `<img class="thumb" src="${imgSrc(e.img, 0)}" alt="" onerror="this.style.visibility='hidden'">` : ''}<span><b>${esc(e.nom || 'Choisir dans la liste')}</b><br><span class="muted">${e.nom ? 'Changer d\'exercice (liste, images, recherche)' : 'Liste, images et recherche'}</span></span></button>
         <label class="lbl">Nom</label>${f(`exercices.${i}.nom`, e.nom, 'ex. Développé couché')}
-        <label class="lbl">Machine</label>${f(`exercices.${i}.machine`, machineName(e.machine || ''), 'ex. Banc + barre')}
+        <label class="lbl">Machine</label>${f(`exercices.${i}.machine`, machineName(e.machine || ''), 'ex. Banc + barre').replace('<input ', '<input list="dl-mach" ')}
         <div class="grid3"><div><label class="lbl">Séries</label>${f(`exercices.${i}.series`, e.series, '3', 'text', 'numeric')}</div>
         <div><label class="lbl"><select class="mode" data-mode="${i}" aria-label="Répétitions ou durée"><option value="reps">Reps</option><option value="sec" ${timedSec(e.reps) ? 'selected' : ''}>Durée (s)</option></select></label>${timedSec(e.reps) ? `<input class="field" data-sec="${i}" inputmode="numeric" value="${timedSec(e.reps)}" placeholder="45">` : f(`exercices.${i}.reps`, e.reps, '10')}</div>
         <div><label class="lbl">Repos (s)</label>${f(`exercices.${i}.repos_s`, e.repos_s, '90', 'text', 'numeric')}</div></div>
@@ -1260,7 +1302,7 @@
     });
     html += `<button class="btn block ghost" id="addex">+ Ajouter un exercice</button><p></p>
       <div class="card"><b>Finisher (facultatif)</b>
-      <label class="lbl">Exercice</label>${f('finisher.exercice', d.finisher.exercice, 'ex. Rameur')}
+      <label class="lbl">Exercice</label>${f('finisher.exercice', d.finisher.exercice, 'ex. Rameur').replace('<input ', '<input list="dl-cardio" ')}
       <label class="lbl">Objectif</label>${f('finisher.objectif', d.finisher.objectif, 'ex. 3 km')}</div>
       <button class="btn block" id="saveprog">Enregistrer</button><p></p>
       <button class="btn block ghost" id="cancelprog">Annuler</button>`;
@@ -1283,7 +1325,16 @@
     view.querySelectorAll('[data-up]').forEach((b) => { b.onclick = () => move(+b.dataset.up, +b.dataset.up - 1); });
     view.querySelectorAll('[data-down]').forEach((b) => { b.onclick = () => move(+b.dataset.down, +b.dataset.down + 1); });
     view.querySelectorAll('[data-rmex]').forEach((b) => { b.onclick = () => { d.exercices.splice(+b.dataset.rmex, 1); viewEditer(id); }; });
-    $('#addex').onclick = () => { const l = d.exercices[d.exercices.length - 1] || {}; d.exercices.push({ nom: '', series: l.series || 3, reps: l.reps || '10', repos_s: l.repos_s || 90, machine: '' }); viewEditer(id); };
+    const applyPick = (e, r) => { e.nom = r.nom; e.machine = r.machine || ''; e.img = r.img || ''; delete e.id; if (r.reps) e.reps = r.reps; e.par_cote = !!r.par_cote; };
+    view.querySelectorAll('[data-pick]').forEach((b) => { b.onclick = () => pickExercise((r) => { applyPick(d.exercices[+b.dataset.pick], r); viewEditer(id); }, groupOf(d.exercices[+b.dataset.pick])); });
+    $('#addex').onclick = () => pickExercise((r) => {
+      const l = d.exercices[d.exercices.length - 1] || {};
+      const e = { nom: '', series: l.series || 3, reps: l.reps || '10', repos_s: l.repos_s || 90, machine: '' };
+      applyPick(e, r);
+      const vide = d.exercices.length === 1 && !String(d.exercices[0].nom).trim();
+      if (vide) d.exercices[0] = Object.assign(d.exercices[0], e); else d.exercices.push(e);
+      viewEditer(id);
+    }, d.exercices.length ? groupOf(d.exercices[d.exercices.length - 1]) : undefined);
     $('#cancelprog').onclick = () => { draft = null; history.back(); };
     $('#saveprog').onclick = () => {
       if (!String(d.nom).trim()) return alert('Donne un nom au programme.');
