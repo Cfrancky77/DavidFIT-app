@@ -110,6 +110,10 @@
     'retropulsion_corde', 'tirage_bucheron', 'curl_poulie_basse', 'dev_couche', 'dev_incline_halteres', 'dev_militaire',
     'ecarte_vis_a_vis', 'extension_triceps', 'rameur', 'elliptique', 'velo', 'pompes'].concat(window.STOCK_EXTRA || [])
     .concat(((window.REPLACEMENTS || {}).groupes || []).flatMap((g) => g.exercices.map((e) => e.img)).filter(Boolean));
+  const WEB = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
+  const isWeb = (k) => typeof k === 'string' && k.startsWith('web:');
+  const isImg = (k) => STOCK.includes(k) || isWeb(k);
+  const imgSrc = (k, n) => (isWeb(k) ? `${WEB}${k.slice(4)}/${n}.jpg` : `img/${k}_${n}.jpg`);
   const stockKey = (name) => { const k = String(name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return STOCK.includes(k) ? k : null; };
   function showPhoto(src, stock) {
     const o = document.createElement('div');
@@ -117,7 +121,7 @@
     const close = () => { o.remove(); document.removeEventListener('keydown', onKey); };
     const onKey = (e) => { if (e.key === 'Escape') close(); };
     o.innerHTML = `<button class="photo-close" aria-label="Fermer l'image">✕ Fermer</button><div class="stock-pair">${stock
-      ? `<img src="img/${stock}_0.jpg" alt="Départ"><img src="img/${stock}_1.jpg" alt="Arrivée"><p class="photo-hint">Image indicative</p>`
+      ? `<img src="${imgSrc(stock, 0)}" alt="Départ"><img src="${imgSrc(stock, 1)}" alt="Arrivée"><p class="photo-hint">Image indicative</p>`
       : `<img src="${src}" alt="Photo de la machine">`}
       <p class="photo-hint">Touche l'écran ou « Fermer » pour revenir</p></div>`;
     o.onclick = close;
@@ -126,7 +130,7 @@
   }
   const thumbHtml = (m, cls = 'thumb') => m.photo
     ? `<img class="${cls}" src="${m.photo}" alt="Machine" data-photo>`
-    : (m.stock && STOCK.includes(m.stock) ? `<img class="${cls}" src="img/${m.stock}_0.jpg" alt="Exercice" data-photo data-stock="${m.stock}">` : '');
+    : (m.stock && isImg(m.stock) ? `<img class="${cls}" src="${imgSrc(m.stock, 0)}" alt="Exercice" data-photo data-stock="${m.stock}" loading="lazy" onerror="this.style.display='none'">` : '');
   const thumb = (m) => thumbHtml(m);
   function bindThumbs(root) {
     root.querySelectorAll('img[data-photo]').forEach((im) => { im.onclick = (e) => { e.preventDefault(); showPhoto(im.src, im.dataset.stock); }; });
@@ -685,11 +689,12 @@
     const drawList = () => {
       const g = REPL.groupes.find((x) => x.id === gid) || { exercices: [] };
       const q = nameKey(query);
-      const list = (q ? REPL.groupes.flatMap((x) => x.exercices) : g.exercices)
+      const cat = (window.CATALOGUE || []).filter((c) => !q ? c[2] === gid : true).map((c) => ({ nom: c[1], machine: c[3], img: 'web:' + c[0] }));
+      const list = (q ? REPL.groupes.flatMap((x) => x.exercices).concat(cat) : g.exercices.concat(cat))
         .filter((e) => !used.has(nameKey(e.nom)) && (!q || nameKey(e.nom + ' ' + (e.machine || '')).includes(q)));
       dyn.innerHTML = `<input class="field" id="rep-q" type="search" placeholder="Rechercher (nom, machine…)" value="${esc(query)}" autocomplete="off">
         <div class="chips" style="${q ? 'opacity:.5' : ''}">${REPL.groupes.map((x) => `<button class="chip ${x.id === gid && !q ? 'on' : ''}" data-g="${x.id}">${esc(x.nom)}</button>`).join('')}</div>
-        ${list.map((e, i) => `<button class="rep-item" data-i="${i}">${STOCK.includes(e.img) ? `<img class="thumb" src="img/${e.img}_0.jpg" alt="">` : ''}<span><b>${esc(e.nom)}</b><br><span class="muted">${esc(e.machine || '')}</span></span></button>`).join('') || `<p class="muted">${q ? 'Aucun résultat : utilise « Autre exercice » plus bas.' : 'Rien d\'autre dans ce groupe.'}</p>`}`;
+        ${list.map((e, i) => `<button class="rep-item" data-i="${i}">${isImg(e.img) ? `<img class="thumb" src="${imgSrc(e.img, 0)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ''}<span><b>${esc(e.nom)}</b><br><span class="muted">${esc(e.machine || '')}</span></span></button>`).join('') || `<p class="muted">${q ? 'Aucun résultat : utilise « Autre exercice » plus bas.' : 'Rien d\'autre dans ce groupe.'}</p>`}`;
       const qi = dyn.querySelector('#rep-q');
       qi.oninput = () => { query = qi.value; const pos = qi.selectionStart; drawList(); const n = dyn.querySelector('#rep-q'); n.focus(); n.setSelectionRange(pos, pos); };
       dyn.querySelectorAll('[data-g]').forEach((b) => { b.onclick = () => { gid = b.dataset.g; query = ''; drawList(); }; });
@@ -992,7 +997,7 @@
         machine: String(machineName(e.machine || '') || '').slice(0, 80),
         alternatives: (e.alternatives || []).map((a) => String(machineName(a))).slice(0, 3),
         note: e.note ? String(e.note).slice(0, 200) : '',
-        img: STOCK.includes(e.img) ? e.img : (STOCK.includes(e.id) ? e.id : imgByName(e.nom)),
+        img: isImg(e.img) ? e.img : (STOCK.includes(e.id) ? e.id : imgByName(e.nom)),
       })),
     };
   }
