@@ -7,7 +7,7 @@ Application Android de suivi des séances en salle, personnalisable pour un coac
 - Pour chaque exercice : la **machine conseillée** et une alternative si elle est occupée (modifiable).
 - Saisie **kg / reps** par série, charges de la séance précédente pré-remplies.
 - **Minuteur de repos** automatique quand on coche une série (vibration + bip).
-- **Remplacer un exercice** pendant la séance (machine occupée, douleur…) : propositions du même groupe musculaire (jambes, dos, pecs, épaules, bras, abdos) ou exercice libre ; séries et repos conservés, suivi et progression sous le nouveau nom, programme inchangé.
+- **Remplacer, retirer ou ajouter un exercice** pendant la séance (machine occupée, douleur, envie de varier) : propositions du même groupe musculaire (jambes, dos, pecs, épaules, bras, abdos) ou exercice libre ; un exercice retiré peut être remis ; séries et repos conservés, suivi et progression sous le nouveau nom, programme inchangé.
 - **Partage de la progression avec le coach** (facultatif, désactivé par défaut) : résumé de chaque séance envoyé vers un Google Sheets privé du coach, voir [programmes/SUIVI.md](programmes/SUIVI.md).
 - **Chrono d'échauffement** puis récupération, et **exercices en durée** (gainage : `Reps` = `45 s`).
 - Accueil avec la semaine en cours et la prochaine séance conseillée ; thème clair / sombre / système.

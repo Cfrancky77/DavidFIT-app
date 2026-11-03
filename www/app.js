@@ -453,9 +453,13 @@
     }).join('');
   }
 
-  // Programme tel qu'il est suivi dans cette séance : exercices remplacés (cur.remplace) appliqués.
-  const withRemplace = (base, cur) => (cur && cur.remplace && Object.keys(cur.remplace).length
-    ? { ...base, exercices: base.exercices.map((e) => (cur.remplace[e.id] ? { ...e, ...cur.remplace[e.id] } : e)) } : base);
+  // Programme tel qu'il est suivi dans cette séance : exercices remplacés (cur.remplace), retirés (cur.retires)
+  // et ajoutés (cur.ajouts) appliqués. Le programme lui-même n'est jamais modifié. Toujours appelé avec le programme d'origine.
+  const withRemplace = (base, cur) => {
+    const rem = (cur && cur.remplace) || {}; const ret = new Set((cur && cur.retires) || []); const aj = (cur && cur.ajouts) || [];
+    if (!Object.keys(rem).length && !ret.size && !aj.length) return base;
+    return { ...base, exercices: base.exercices.filter((e) => !ret.has(e.id)).map((e) => (rem[e.id] ? { ...e, ...rem[e.id] } : e)).concat(aj) };
+  };
 
   function renderSession(base, cur) {
     const s = withRemplace(base, cur);
@@ -472,12 +476,12 @@
       const last = lastSetsFor(ex.id, ex.nom);
       const sets = cur.exercices[ex.id];
       html += `<div class="card" data-ex="${ex.id}">
-        <div class="row between"><h3>${esc(ex.nom)}</h3><span class="badge">${ex.series} × ${esc(ex.reps)}${ex.par_cote ? '/côté' : ''}</span></div>${ex.remplace ? `<div class="muted">↻ Remplace : ${esc(ex.de)}</div>` : ''}${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
+        <div class="row between"><h3>${esc(ex.nom)}</h3><span class="badge">${ex.series} × ${esc(ex.reps)}${ex.par_cote ? '/côté' : ''}</span></div>${ex.ajoute ? `<div class="muted">＋ Ajouté pour cette séance</div>` : ex.remplace ? `<div class="muted">↻ Remplace : ${esc(ex.de)}</div>` : ''}${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
         ${last ? `<div class="muted">Précédent (${fmtShort(last.date)}) : ${esc(last.sets.filter((x) => x.done).map((x) => fmtSet(x)).join(', '))}</div>` : ''}
         <div class="machine"><div class="row">${thumb(m)}<span>Machine : <b>${esc(m.main)}</b>${m.custom ? ' <span class="muted">(perso)</span>' : ''}</span>
           <button class="btn small ghost" data-edit-machine="${ex.id}">Modifier</button></div>
           ${m.alts.length ? `<div class="alt">Si occupée : ${esc(m.alts.join(' · '))}</div>` : ''}
-          <div class="row" style="margin-top:6px"><button class="btn small ghost" data-replace="${ex.id}">⇄ Remplacer l'exercice</button></div></div>
+          <div class="row" style="margin-top:6px;flex-wrap:wrap"><button class="btn small ghost" data-replace="${ex.id}">⇄ Remplacer</button><button class="btn small ghost" data-remove="${ex.id}">✕ Retirer</button></div></div>
         <table class="sets"><thead><tr><th>Série</th><th>Kg</th><th>${timedSec(ex.reps) ? 'Durée' : 'Reps'}</th><th></th><th>Repos</th></tr></thead><tbody>
         ${sets.map((st, i) => `<tr class="${st.done ? 'done' : ''}" data-i="${i}">
           <td>${i + 1}</td>
@@ -490,6 +494,7 @@
       </div>`;
     });
 
+    html += `<button class="btn block ghost" id="add-ex">+ Ajouter un exercice</button><p></p>`;
     html += `<div class="card">${hasFin(s) ? `<label class="row"><input type="checkbox" id="fin" ${cur.finisher ? 'checked' : ''}>
       <span><b>Finisher</b> : ${esc(s.finisher.exercice)}<div class="muted">${esc(s.finisher.objectif || '')}</div>
       <div class="row" style="margin-top:6px">${thumbHtml({ stock: stockKey(s.finisher.exercice) })}</div></span></label>` : ''}
@@ -519,6 +524,7 @@
     if ($('#warm-rest')) $('#warm-rest').onclick = warmRestTimer;
     if ($('#fin')) $('#fin').onchange = (e) => { cur.finisher = e.target.checked; persist(); };
     $('#note').oninput = (e) => { cur.note = e.target.value; persist(); };
+    $('#add-ex').onclick = () => openReplace(base, null, cur, () => renderSession(base, cur), 'add');
 
     view.querySelectorAll('[data-ex]').forEach((card) => {
       const exId = card.dataset.ex;
@@ -553,18 +559,25 @@
       });
       card.querySelector('[data-add]').onclick = () => {
         const sets = cur.exercices[exId]; const l = sets[sets.length - 1] || { kg: '', reps: repsMin(ex.reps) };
-        sets.push({ kg: l.kg, reps: l.reps, done: false }); persist(); renderSession(s, cur);
+        sets.push({ kg: l.kg, reps: l.reps, done: false }); persist(); renderSession(base, cur);
       };
       card.querySelector('[data-del]').onclick = () => {
-        if (cur.exercices[exId].length > 1) { cur.exercices[exId].pop(); persist(); renderSession(s, cur); }
+        if (cur.exercices[exId].length > 1) { cur.exercices[exId].pop(); persist(); renderSession(base, cur); }
       };
       card.querySelector('[data-edit-machine]').onclick = () => {
         if (!ex.remplace) return editMachine(ex, () => renderSession(base, cur));
         const v = prompt(`Machine pour « ${ex.nom} »`, ex.machine || '');
         if (v === null) return;
-        cur.remplace[exId].machine = v.trim(); persist(); renderSession(base, cur);
+        const ov = ex.ajoute ? cur.ajouts.find((a) => a.id === exId) : cur.remplace[exId];
+        ov.machine = v.trim(); persist(); renderSession(base, cur);
       };
       card.querySelector('[data-replace]').onclick = () => openReplace(base, ex, cur, () => renderSession(base, cur));
+      card.querySelector('[data-remove]').onclick = () => {
+        if (s.exercices.length <= 1) return alert('Il faut garder au moins un exercice dans la séance.');
+        const done = (cur.exercices[exId] || []).some((x) => x.done);
+        if (!confirm(`Retirer « ${ex.nom} » de cette séance ?${done ? '\nLes séries déjà cochées seront perdues.' : ''}\nLe programme n'est pas modifié.`)) return;
+        removeExercise(cur, exId); persist(); renderSession(base, cur);
+      };
     });
 
     $('#finish').onclick = () => {
@@ -598,10 +611,36 @@
     const byWord = REPL.groupes.find((g) => g.mots.some((m) => words.some((w) => w.startsWith(m))));
     return byWord ? byWord.id : null;
   }
+  // Retire un exercice de la séance en cours (un exercice ajouté est simplement supprimé).
+  function removeExercise(cur, exId) {
+    if ((cur.ajouts || []).some((a) => a.id === exId)) cur.ajouts = cur.ajouts.filter((a) => a.id !== exId);
+    else { cur.retires = (cur.retires || []).concat(exId); if (cur.remplace) delete cur.remplace[exId]; }
+    delete cur.exercices[exId]; delete cur.exNoms[exId];
+  }
+  // Ajoute un exercice à la fin de la séance : 3 séries (réglables avec + / − Série), 90 s de repos (45 s en durée).
+  function addExercise(cur, rep) {
+    const id = 'x' + Date.now().toString(36);
+    const timed = timedSec(rep.reps) > 0;
+    const ex = { id, nom: rep.nom, machine: rep.machine || '', img: rep.img || '', series: 3, reps: rep.reps || '10', repos_s: timed ? 45 : 90, par_cote: !!rep.par_cote, alternatives: [], note: '', remplace: true, ajoute: true };
+    cur.ajouts = (cur.ajouts || []).concat(ex);
+    cur.exNoms[id] = ex.nom; cur.exercices[id] = freshSets(ex);
+  }
+  // Remet dans la séance un exercice du programme qu'on avait retiré.
+  function restoreExercise(base, cur, exId) {
+    const ex = base.exercices.find((e) => e.id === exId); if (!ex) return;
+    cur.retires = (cur.retires || []).filter((id) => id !== exId);
+    cur.exNoms[exId] = ex.nom; cur.exercices[exId] = freshSets(ex);
+  }
   function applyReplacement(base, cur, exId, rep) {
-    const ex = base.exercices.find((e) => e.id === exId);
+    const ex = base.exercices.find((e) => e.id === exId) || (cur.ajouts || []).find((a) => a.id === exId);
     const sets = cur.exercices[exId] || [];
     if (sets.some((x) => x.done) && !confirm('Les séries déjà cochées de cet exercice seront perdues. Continuer ?')) return false;
+    if (ex.ajoute) { // exercice ajouté : on le modifie directement
+      ex.reps = timedSec(rep.reps) ? rep.reps : (timedSec(ex.reps) ? (rep.reps || '10') : ex.reps);
+      Object.assign(ex, { nom: rep.nom, machine: rep.machine || '', img: rep.img || '', par_cote: !!rep.par_cote });
+      cur.exNoms[exId] = rep.nom; cur.exercices[exId] = freshSets(ex, sets.length);
+      return true;
+    }
     cur.remplace = cur.remplace || {};
     if (!rep) { // retour à l'exercice d'origine
       delete cur.remplace[exId]; cur.exNoms[exId] = ex.nom;
@@ -615,23 +654,31 @@
     cur.exercices[exId] = freshSets({ ...ex, ...cur.remplace[exId] }, sets.length);
     return true;
   }
-  function openReplace(base, ex, cur, done) {
-    const orig = base.exercices.find((e) => e.id === ex.id);
+  // mode 'add' : ajoute un exercice à la séance (ex = null) ; sinon remplace ex.
+  function openReplace(base, ex, cur, done, mode) {
+    const add = mode === 'add';
+    const orig = ex && base.exercices.find((e) => e.id === ex.id);
     // exercices déjà présents dans la séance : pas proposés
-    const used = new Set(withRemplace(base, cur).exercices.map((e) => nameKey(e.nom)));
-    let gid = groupOf(ex) || (REPL.groupes[0] || {}).id;
+    const cour = withRemplace(base, cur).exercices;
+    const used = new Set(cour.map((e) => nameKey(e.nom)));
+    const retires = add ? base.exercices.filter((e) => (cur.retires || []).includes(e.id)) : [];
+    let gid = (add ? groupOf(cour[cour.length - 1] || {}) : groupOf(ex)) || (REPL.groupes[0] || {}).id;
     const o = document.createElement('div'); o.className = 'sheet-overlay';
     const close = () => o.remove();
-    const choose = (rep) => { if (applyReplacement(base, cur, ex.id, rep)) { setCurrent(cur); close(); done(); } };
-    o.innerHTML = `<div class="sheet" role="dialog" aria-label="Remplacer l'exercice">
-      <div class="row between"><h3>Remplacer « ${esc(ex.nom)} »</h3><button class="btn small ghost" data-close aria-label="Fermer">✕</button></div>
-      <p class="muted">Pour cette séance seulement : le programme n'est pas modifié. Séries et repos conservés.</p>
+    const choose = (rep) => {
+      if (add) { addExercise(cur, rep); setCurrent(cur); close(); done(); return; }
+      if (applyReplacement(base, cur, ex.id, rep)) { setCurrent(cur); close(); done(); }
+    };
+    o.innerHTML = `<div class="sheet" role="dialog" aria-label="${add ? 'Ajouter un exercice' : 'Remplacer l\'exercice'}">
+      <div class="row between"><h3>${add ? 'Ajouter un exercice' : `Remplacer « ${esc(ex.nom)} »`}</h3><button class="btn small ghost" data-close aria-label="Fermer">✕</button></div>
+      <p class="muted">Pour cette séance seulement : le programme n'est pas modifié. ${add ? '3 séries au départ : « + Série » / « − Série » les ajustent.' : 'Séries et repos conservés.'}</p>
+      ${retires.length ? `<h4 style="margin:6px 0">Remettre un exercice retiré</h4><div class="chips">${retires.map((e) => `<button class="chip" data-back="${e.id}">↩ ${esc(e.nom)}</button>`).join('')}</div>` : ''}
       <div id="rep-dyn"></div>
       <h4 style="margin:14px 0 6px">Autre exercice</h4>
       <input class="field" id="rep-nom" placeholder="Nom de l'exercice">
       <input class="field" id="rep-mach" placeholder="Machine (facultatif)" style="margin-top:6px">
       <button class="btn block" id="rep-own" style="margin-top:8px">Utiliser cet exercice</button>
-      ${ex.remplace ? `<p></p><button class="btn block ghost" id="rep-reset">Remettre « ${esc(orig.nom)} »</button>` : ''}</div>`;
+      ${!add && ex.remplace && !ex.ajoute && orig ? `<p></p><button class="btn block ghost" id="rep-reset">Remettre « ${esc(orig.nom)} »</button>` : ''}</div>`;
     const dyn = o.querySelector('#rep-dyn');
     const drawList = () => {
       const g = REPL.groupes.find((x) => x.id === gid) || { exercices: [] };
@@ -649,6 +696,7 @@
       if (!nom) return alert('Donne un nom à l\'exercice.');
       choose({ nom: nom.slice(0, 80), machine: o.querySelector('#rep-mach').value.trim().slice(0, 80), img: imgByName(nom) || '' });
     };
+    o.querySelectorAll('[data-back]').forEach((b) => { b.onclick = () => { restoreExercise(base, cur, b.dataset.back); setCurrent(cur); close(); done(); }; });
     const resetBtn = o.querySelector('#rep-reset');
     if (resetBtn) resetBtn.onclick = () => choose(null);
     document.body.appendChild(o);
