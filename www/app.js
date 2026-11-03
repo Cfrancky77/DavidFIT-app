@@ -79,9 +79,10 @@
 
   // ---------- photos de machines ----------
   // Réduit l'image (côté max 640 px, JPEG) pour tenir dans le stockage local.
-  function pickPhoto(exId, done) {
+  function pickPhoto(exId, done, camera) {
     const inp = document.createElement('input');
     inp.type = 'file'; inp.accept = 'image/*';
+    if (camera) inp.setAttribute('capture', 'environment');
     inp.onchange = () => {
       const f = inp.files && inp.files[0];
       if (!f) return;
@@ -500,7 +501,7 @@
         <div class="row between"><h3>${esc(ex.nom)}</h3><span class="badge">${ex.series} × ${esc(ex.reps)}${ex.par_cote ? '/côté' : ''}</span></div>${ex.ajoute ? `<div class="muted">＋ Ajouté pour cette séance</div>` : ex.remplace ? `<div class="muted">↻ Remplace : ${esc(ex.de)}</div>` : ''}${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
         ${last ? `<div class="muted">Précédent (${fmtShort(last.date)}) : ${esc(last.sets.filter((x) => x.done).map((x) => fmtSet(x)).join(', '))}</div>` : ''}
         <div class="machine"><div class="row">${thumb(m)}<span>Machine : <b>${esc(m.main)}</b>${m.custom ? ' <span class="muted">(perso)</span>' : ''}</span>
-          <button class="btn small ghost" data-edit-machine="${ex.id}">Modifier</button></div>
+          <button class="btn small ghost" data-edit-machine="${ex.id}" aria-label="Modifier le nom de la machine" title="Modifier le nom de la machine" style="padding:2px 8px">✎</button></div>
           ${m.alts.length ? `<div class="alt">Si occupée : ${esc(m.alts.join(' · '))}</div>` : ''}
           <div class="row" style="margin-top:6px;flex-wrap:wrap"><button class="btn small ghost" data-replace="${ex.id}">⇄ Remplacer</button><button class="btn small ghost" data-remove="${ex.id}">✕ Retirer</button></div></div>
         <table class="sets"><thead><tr><th>Série</th><th>Kg</th><th>${timedSec(ex.reps) ? 'Durée' : 'Reps'}</th><th></th><th>Repos</th></tr></thead><tbody>
@@ -948,7 +949,7 @@
 
   function viewMachines() {
     setTitle('Machines et photos', '#/reglages'); setTab('reglages');
-    let html = `<p class="muted">Images indicatives : Free Exercise DB (domaine public). Touche « Nom » pour indiquer la machine de ton club, « Ma photo » pour la remplacer par ta photo ou une capture.</p>`;
+    let html = `<p class="muted">Images indicatives : Free Exercise DB (domaine public). Touche « Nom » pour indiquer la machine de ton club, « Prendre une photo » ou « Choisir une image » pour la remplacer par ta photo ou une capture.</p>`;
     allSeances().forEach((s) => {
       html += `<h2>${esc(s.nom)}</h2>`;
       s.exercices.forEach((ex) => {
@@ -960,7 +961,8 @@
           <div class="muted" style="font-size:12px">${m.photo ? 'Ta photo' : 'Image indicative'}</div></div></div>
           <div class="row" style="margin-top:8px;flex-wrap:wrap">
             <button class="btn small ghost" data-name>Nom</button>
-            <button class="btn small ghost" data-pic>${m.photo ? 'Changer ma photo' : 'Ma photo'}</button>
+            <button class="btn small ghost" data-cam>📷 Prendre une photo</button>
+            <button class="btn small ghost" data-pic>${m.photo ? 'Changer (galerie)' : 'Choisir une image'}</button>
             ${m.photo ? '<button class="btn small ghost" data-rm>Revenir à l\'image indicative</button>' : ''}
           </div></div>`;
       });
@@ -971,6 +973,7 @@
       const ex = exById(card.dataset.mx);
       card.querySelector('[data-name]').onclick = () => editMachine(ex, viewMachines);
       card.querySelector('[data-pic]').onclick = () => pickPhoto(ex.id, viewMachines);
+      card.querySelector('[data-cam]').onclick = () => pickPhoto(ex.id, viewMachines, true);
       const rm = card.querySelector('[data-rm]'); if (rm) rm.onclick = () => removePhoto(ex.id, viewMachines);
     });
   }
