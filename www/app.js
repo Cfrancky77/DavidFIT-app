@@ -1088,20 +1088,26 @@
         par_cote: !!e.par_cote,
         repos_s: n(e.repos_s, 60),
         charge: true,
-        machine: String(machineName(e.machine || '') || '').slice(0, 80),
+        machine: String(machineName(e.machine || (catalogByName(e.nom) || {}).machine || '') || '').slice(0, 80),
         alternatives: (e.alternatives || []).map((a) => String(machineName(a))).slice(0, 3),
         note: e.note ? String(e.note).slice(0, 200) : '',
         img: isImg(e.img) ? e.img : (STOCK.includes(e.id) ? e.id : imgByName(e.nom)),
       })),
     };
   }
-  // Image indicative retrouvée d'après le nom (exercices des fiches et de la bibliothèque).
+  // Exercice du catalogue retrouvé d'après son nom (exercices choisis puis catalogue complet) : image et machine par défaut.
+  function catalogByName(nom) {
+    const k = nameKey(nom);
+    if (!k) return null;
+    const pool = DATA.seances.concat(window.LIBRARY || []).flatMap((s) => s.exercices.map((e) => ({ nom: e.nom, img: e.img || e.id, machine: e.machine })))
+      .concat(REPL.groupes.flatMap((g) => g.exercices))
+      .concat((window.CATALOGUE || []).map((c) => ({ nom: c[1], img: 'web:' + c[0], machine: c[3] })));
+    return pool.find((e) => nameKey(e.nom) === k && isImg(e.img)) || null;
+  }
+  // Image indicative retrouvée d'après le nom (fiches, bibliothèque, catalogue).
   function imgByName(nom) {
-    const k = String(nom || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
-    const pool = DATA.seances.concat(window.LIBRARY || []).flatMap((s) => s.exercices);
-    const hit = pool.find((e) => String(e.nom).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase() === k);
-    const key = hit && (hit.img || hit.id);
-    return key && STOCK.includes(key) ? key : undefined;
+    const hit = catalogByName(nom);
+    return hit ? hit.img : undefined;
   }
   function cloneSeance(src, nom) {
     const c = normalizeSeance(src, nom);
