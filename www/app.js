@@ -862,6 +862,61 @@
     return svg + '</svg>';
   }
 
+  // ---------- images hors ligne (catalogue complet) ----------
+  // Les images du catalogue se chargent en ligne ; « Télécharger les images » les garde sur l'appareil (IndexedDB)
+  // et les <img> pointant vers GitHub sont remplacées à la volée par la copie locale.
+  const imgStore = (() => {
+    let dbp = null;
+    const open = () => dbp || (dbp = new Promise((res, rej) => {
+      const r = indexedDB.open('tr_imgs', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('i');
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
+    const tx = (mode, fn) => open().then((db) => new Promise((res, rej) => {
+      const t = db.transaction('i', mode); const out = fn(t.objectStore('i'));
+      t.oncomplete = () => res(out && out.result); t.onerror = () => rej(t.error);
+    }));
+    return {
+      get: (k) => tx('readonly', (st) => st.get(k)).catch(() => null),
+      put: (k, b) => tx('readwrite', (st) => st.put(b, k)),
+      has: (k) => tx('readonly', (st) => st.count(k)).then((n) => n > 0).catch(() => false),
+      count: () => tx('readonly', (st) => st.count()).catch(() => 0),
+      clear: () => tx('readwrite', (st) => st.clear()),
+    };
+  })();
+  const hydrateImg = (im) => {
+    if (im.dataset.hyd || !im.src || !im.src.startsWith(WEB)) return;
+    im.dataset.hyd = '1';
+    imgStore.get(im.src).then((b) => { if (b) { im.src = URL.createObjectURL(b); im.style.visibility = ''; } }).catch(() => {});
+  };
+  try {
+    new MutationObserver((muts) => muts.forEach((m) => m.addedNodes.forEach((n) => {
+      if (n.nodeType !== 1) return;
+      if (n.tagName === 'IMG') hydrateImg(n); else n.querySelectorAll && n.querySelectorAll('img').forEach(hydrateImg);
+    }))).observe(document.body, { childList: true, subtree: true });
+  } catch (e) { /* ignore */ }
+  let imgDl = null; // { done, total, stop }
+  async function downloadImages(onProgress) {
+    const urls = [];
+    (window.CATALOGUE || []).forEach((c) => { urls.push(imgSrc('web:' + c[0], 0), imgSrc('web:' + c[0], 1)); });
+    imgDl = { done: 0, total: urls.length, stop: false, fail: 0 };
+    let i = 0;
+    const worker = async () => {
+      while (i < urls.length && !imgDl.stop) {
+        const u = urls[i++];
+        try {
+          if (!(await imgStore.has(u))) {
+            const r = await fetch(u); if (!r.ok) throw new Error(r.status);
+            await imgStore.put(u, await r.blob());
+          }
+        } catch (e) { imgDl.fail++; }
+        imgDl.done++; onProgress(imgDl);
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    const res = imgDl; imgDl = null; return res;
+  }
+
   function viewReglages() {
     setTitle('Réglages'); setTab('reglages');
     const h = getHistory();
@@ -887,6 +942,10 @@
       <button class="btn block" id="exp">Exporter (copier)</button><p></p>
       <textarea id="io" placeholder="Colle ici une sauvegarde pour l'importer"></textarea><p></p>
       <button class="btn block ghost" id="imp">Importer depuis le texte collé</button></div>
+      <div class="card"><h3>Images hors ligne</h3>
+      <div class="muted" style="font-size:13px">Les images du catalogue d'exercices se chargent en ligne. Télécharge-les une fois (environ 50 Mo, de préférence en Wi-Fi) pour les avoir sans connexion.</div>
+      <div id="imgdl-state" class="muted" style="margin:8px 0"></div>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn small" id="imgdl">Télécharger les images</button><button class="btn small ghost" id="imgdl-clear">Supprimer les images téléchargées</button></div></div>
       <a class="card link" href="#/machines"><div class="row between"><h3>Machines et photos</h3><span class="badge accent">Modifier</span></div>
       <div class="muted">Nom de la machine et photo pour chaque exercice.</div></a>
       ${BR.logoComplet ? `<div class="card" style="text-align:center;background:#fff"><img src="${esc(BR.logoComplet)}" alt="${esc(BR.coach || BR.nomApp)}" style="max-width:100%;max-height:140px"></div>` : ''}
@@ -918,6 +977,22 @@
         $('#share-state').textContent = left() ? `${left()} séance(s) pas encore envoyée(s) : vérifie la connexion.` : 'Tout est envoyé ✓';
         $('#share-now').disabled = false;
       };
+    }
+    if ($('#imgdl')) {
+      const total = (window.CATALOGUE || []).length * 2;
+      const showState = async () => {
+        const n = await imgStore.count(); const st = $('#imgdl-state'); if (!st) return;
+        st.textContent = imgDl ? `Téléchargement… ${imgDl.done} / ${imgDl.total}` : (n >= total ? `Toutes les images sont sur l'appareil ✓ (${n})` : n ? `${n} image(s) sur ${total} téléchargée(s)` : 'Aucune image téléchargée');
+      };
+      showState();
+      $('#imgdl').onclick = async () => {
+        if (imgDl) { imgDl.stop = true; return; }
+        $('#imgdl').textContent = 'Arrêter';
+        const res = await downloadImages(() => { const st = $('#imgdl-state'); if (st) st.textContent = `Téléchargement… ${imgDl.done} / ${imgDl.total}`; });
+        if (location.hash === '#/reglages') { viewReglages(); if (res.fail) alert(`${res.fail} image(s) n'ont pas pu être téléchargées : vérifie la connexion et relance, seules les manquantes seront reprises.`); }
+      };
+      if (imgDl) $('#imgdl').textContent = 'Arrêter';
+      $('#imgdl-clear').onclick = async () => { if (confirm('Supprimer les images téléchargées ? Elles se rechargeront en ligne au besoin.')) { await imgStore.clear(); showState(); } };
     }
     if ($('#chk-upd')) $('#chk-upd').onclick = () => checkUpdate(true).then((u) => { if (!u) alert(navigator.onLine === false ? 'Pas de connexion.' : `Tu as la dernière version (v${window.APP_VERSION || 'dev'}).`); viewReglages(); });
     const showImc = () => { $('#imc').innerHTML = imcHtml(); };
@@ -1499,8 +1574,10 @@
     }
   }
   window.addEventListener('hashchange', route);
+  const bootEnd = () => { const b = document.getElementById('boot'); if (b) { b.classList.add('done'); setTimeout(() => b.remove(), 400); } };
   document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#timer').hidden && !$('#timer').classList.contains('finished')) updateTimer(); });
   route();
+  bootEnd();
   flushShare();
   checkUpdate(false).then((u) => { if (u && /^#\/?$|^$/.test(location.hash)) route(); });
   syncCoach(false).then((changed) => { if (changed && /^#\/(entrainement)?$|^$/.test(location.hash)) route(); });
