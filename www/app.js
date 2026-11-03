@@ -122,7 +122,7 @@
     const close = () => { o.remove(); document.removeEventListener('keydown', onKey); };
     const onKey = (e) => { if (e.key === 'Escape') close(); };
     o.innerHTML = `<button class="photo-close" aria-label="Fermer l'image">✕ Fermer</button><div class="stock-pair">${stock
-      ? `<img src="${imgSrc(stock, 0)}" alt="Départ"><img src="${imgSrc(stock, 1)}" alt="Arrivée"><p class="photo-hint">Image indicative</p>`
+      ? `<div class="stock-anim"><img src="${imgSrc(stock, 0)}" alt="Départ"><img class="b" src="${imgSrc(stock, 1)}" alt="Arrivée"></div><p class="photo-hint">Mouvement : départ ↔ arrivée · image indicative</p>`
       : `<img src="${src}" alt="Photo de la machine">`}
       <p class="photo-hint">Touche l'écran ou « Fermer » pour revenir</p></div>`;
     o.onclick = close;
