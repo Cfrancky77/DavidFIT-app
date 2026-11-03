@@ -13,12 +13,13 @@ Les anciens programmes ne sont pas touchés.
 
 ## Version avec colonne « Groupe » (liste d'exercices filtrée)
 
-Le modèle `Training-programmes.xlsx` a maintenant une colonne **Groupe** (Jambes, Dos, Pecs, Épaules, Bras, Abdos, Cardio) avant **Exercice** : on choisit d'abord le groupe, la liste des exercices ne montre alors que ceux du groupe. Groupe vide = liste complète. L'appli ignore cette colonne (elle lit les colonnes par leur nom), les anciens tableaux continuent donc de fonctionner.
+Colonne **Groupe** (Jambes, Dos, Pecs, Épaules, Bras, Abdos, Cardio) en C, avant **Exercice** (D) : on choisit d'abord le groupe, la liste des exercices ne montre alors que ceux du groupe. Groupe vide = liste complète. L'appli ignore cette colonne (elle lit les colonnes par leur nom) : les anciens tableaux continuent de marcher.
 
-Pour l'avoir dans le vrai Google Sheets :
+Dans Google Sheets, une liste déroulante ne peut pas dépendre d'une autre cellule par formule : on utilise un petit script (déclencheur simple, sans autorisation).
+
 1. Onglet **Listes** : coller `listes-par-groupe.csv` à partir de la cellule **H1** (colonnes Groupes, Jambes, Dos, Pecs, Épaules, Bras, Abdos, Cardio).
-2. *Données → Plages nommées* : créer `Liste_Jambes` = Listes!I2:I200, `Liste_Dos` = J2:J200, `Liste_Pecs` = K2:K200, `Liste_Epaules` = L2:L200, `Liste_Bras` = M2:M200, `Liste_Abdos` = N2:N200, `Liste_Cardio` = O2:O200.
-3. Dans chaque onglet de programme (d'abord « Nouvel élève ») : insérer une colonne **C** nommée *Groupe* avec une validation « liste d'après une plage » = `Listes!H2:H20`.
-4. Validation de la colonne **Exercice** (maintenant D) : « liste d'après une plage », formule `=INDIRECT("Liste_"&SUBSTITUTE(SUBSTITUTE($C2;"É";"E");" ";""))`, avec avertissement au lieu de rejet.
+2. Dans chaque onglet de programme (d'abord « Nouvel élève ») : insérer une colonne **C** nommée *Groupe*. Validation de C2:C500 : *Menu déroulant (depuis une plage)* = `Listes!H2:H20`.
+3. Validation de **D2:D500** (Exercice) : *Menu déroulant (depuis une plage)* = `Listes!B2:B900`, option « Afficher un avertissement ». C'est la liste complète par défaut.
+4. *Extensions → Apps Script* : coller le contenu de `groupe-apps-script.gs`, Enregistrer. Rien d'autre à faire.
 
-Non testé directement dans Google Sheets depuis ici (le modèle xlsx est valide pour Excel et LibreOffice) : si l'étape 4 n'est pas acceptée, garder la liste complète (colonne Exercice sans filtre) et dire-le.
+Test : en C2 choisir « Jambes » → la liste en D2 ne montre que des exercices de jambes. Les lignes dont le groupe n'a pas été (re)choisi gardent la liste complète.
