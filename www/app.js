@@ -896,6 +896,7 @@
     }))).observe(document.body, { childList: true, subtree: true });
   } catch (e) { /* ignore */ }
   let imgDl = null; // { done, total, stop }
+  let imgFail = 0;
   async function downloadImages(onProgress) {
     const urls = [];
     (window.CATALOGUE || []).forEach((c) => { urls.push(imgSrc('web:' + c[0], 0), imgSrc('web:' + c[0], 1)); });
@@ -982,14 +983,15 @@
       const total = (window.CATALOGUE || []).length * 2;
       const showState = async () => {
         const n = await imgStore.count(); const st = $('#imgdl-state'); if (!st) return;
-        st.textContent = imgDl ? `Téléchargement… ${imgDl.done} / ${imgDl.total}` : (n >= total ? `Toutes les images sont sur l'appareil ✓ (${n})` : n ? `${n} image(s) sur ${total} téléchargée(s)` : 'Aucune image téléchargée');
+        st.textContent = imgDl ? `Téléchargement… ${imgDl.done} / ${imgDl.total}` : (n >= total ? `Toutes les images sont sur l'appareil ✓ (${n})` : n ? `${n} image(s) sur ${total} téléchargée(s)` : 'Aucune image téléchargée') + (imgFail ? ` — ${imgFail} n'ont pas pu être téléchargées : vérifie la connexion et relance, seules les manquantes seront reprises.` : '');
       };
       showState();
       $('#imgdl').onclick = async () => {
         if (imgDl) { imgDl.stop = true; return; }
         $('#imgdl').textContent = 'Arrêter';
         const res = await downloadImages(() => { const st = $('#imgdl-state'); if (st) st.textContent = `Téléchargement… ${imgDl.done} / ${imgDl.total}`; });
-        if (location.hash === '#/reglages') { viewReglages(); if (res.fail) alert(`${res.fail} image(s) n'ont pas pu être téléchargées : vérifie la connexion et relance, seules les manquantes seront reprises.`); }
+        imgFail = res.fail;
+        if (location.hash === '#/reglages') viewReglages();
       };
       if (imgDl) $('#imgdl').textContent = 'Arrêter';
       $('#imgdl-clear').onclick = async () => { if (confirm('Supprimer les images téléchargées ? Elles se rechargeront en ligne au besoin.')) { await imgStore.clear(); showState(); } };
