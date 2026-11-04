@@ -950,14 +950,15 @@
       <a class="card link" href="#/machines"><div class="row between"><h3>Machines et photos</h3><span class="badge accent">Modifier</span></div>
       <div class="muted">Nom de la machine et photo pour chaque exercice.</div></a>
       ${BR.logoComplet ? `<div class="card" style="text-align:center;background:#fff"><img src="${esc(BR.logoComplet)}" alt="${esc(BR.coach || BR.nomApp)}" style="max-width:100%;max-height:140px"></div>` : ''}
-      <p class="muted" style="text-align:center">${esc(BR.nomApp)} v${esc(window.APP_VERSION || 'dev')}${hasContact() ? '' : ' · coordonnées du coach à venir'}</p>
+      <p class="muted" id="ver" style="text-align:center">${esc(BR.nomApp)} v${esc(window.APP_VERSION || 'dev')}${hasContact() ? '' : ' · coordonnées du coach à venir'}</p>
       ${BR.majDepot ? `${updateHtml(true)}<p style="text-align:center"><button class="link-btn" id="chk-upd">Rechercher une mise à jour</button></p>` : ''}
       <p style="text-align:center"><button class="link-btn" id="replay-ob">Relancer la configuration de départ</button></p>
-      <p style="text-align:center"><button class="link-btn" id="chg-sheet">Changer le tableau du coach</button></p>`;
+      ${load('tr_dev', false) ? '<p style="text-align:center"><button class="link-btn" id="chg-sheet">Changer le tableau du coach</button></p>' : ''}`;
     $('#prenom').oninput = (e) => save('tr_prenom', e.target.value.trim());
     if ($('#client')) $('#client').onchange = (e) => { save('tr_client', e.target.value.trim()); syncCoach(true).then(() => {}); };
     $('#replay-ob').onclick = () => { save('tr_onboarded', false); route(); };
-    $('#chg-sheet').onclick = changeSheet;
+    if ($('#chg-sheet')) $('#chg-sheet').onclick = changeSheet;
+    { let taps = 0, t0 = 0; $('#ver').onclick = () => { const n = Date.now(); taps = n - t0 < 1500 ? taps + 1 : 1; t0 = n; if (taps >= 7) { taps = 0; save('tr_dev', !load('tr_dev', false)); viewReglages(); } }; }
     if ($('#share')) {
       $('#share').onchange = (e) => {
         save('tr_partage', e.target.checked);
