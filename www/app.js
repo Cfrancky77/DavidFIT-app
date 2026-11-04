@@ -922,8 +922,7 @@
     setTitle('Réglages'); setTab('reglages');
     const h = getHistory();
     let theme = 'system'; try { theme = localStorage.getItem('tr_theme') || 'system'; } catch (e) { /* ignore */ }
-    view.innerHTML = `${hasContact() ? `<a class="card link" href="#/contact"><div class="row between"><h3>Contacter ${esc(BR.coach || 'le coach')}</h3><span class="link-accent">›</span></div></a>` : ''}
-      <div class="card"><h3>Profil</h3><label class="lbl" for="prenom">Ton prénom (affiché après « Bonjour »)</label>
+    view.innerHTML = `      <div class="card"><h3>Profil</h3><label class="lbl" for="prenom">Ton prénom (affiché après « Bonjour »)</label>
       <input class="field" id="prenom" maxlength="30" autocomplete="given-name" value="${esc(load('tr_prenom', ''))}" placeholder="ex. Alex">
       <div class="grid2" style="grid-template-columns:1fr 1fr"><div><label class="lbl" for="taille">Taille (cm)</label><input class="field" id="taille" inputmode="numeric" value="${esc(load('tr_taille', ''))}" placeholder="facultatif"></div>
       <div><label class="lbl" for="poids">Poids (kg)</label><input class="field" id="poids" inputmode="decimal" value="${esc(load('tr_poids', ''))}" placeholder="facultatif"></div></div>
@@ -949,10 +948,11 @@
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn small" id="imgdl">Télécharger les images</button><button class="btn small ghost" id="imgdl-clear">Supprimer les images téléchargées</button></div></div>
       <a class="card link" href="#/machines"><div class="row between"><h3>Machines et photos</h3><span class="badge accent">Modifier</span></div>
       <div class="muted">Nom de la machine et photo pour chaque exercice.</div></a>
+      <button class="btn block ghost" id="replay-ob">Relancer la configuration de départ</button><p></p>
       ${BR.logoComplet ? `<div class="card" style="text-align:center;background:#fff"><img src="${esc(BR.logoComplet)}" alt="${esc(BR.coach || BR.nomApp)}" style="max-width:100%;max-height:140px"></div>` : ''}
+      ${hasContact() ? `<a class="card link" href="#/contact"><div class="row between"><h3>Contacter ${esc(BR.coach || 'le coach')}</h3><span class="link-accent">›</span></div></a>` : ''}
       <p class="muted" id="ver" style="text-align:center">${esc(BR.nomApp)} v${esc(window.APP_VERSION || 'dev')}${hasContact() ? '' : ' · coordonnées du coach à venir'}</p>
       ${BR.majDepot ? `${updateHtml(true)}<p style="text-align:center"><button class="link-btn" id="chk-upd">Rechercher une mise à jour</button></p>` : ''}
-      <p style="text-align:center"><button class="link-btn" id="replay-ob">Relancer la configuration de départ</button></p>
       ${load('tr_dev', false) ? '<p style="text-align:center"><button class="link-btn" id="chg-sheet">Changer le tableau du coach</button></p>' : ''}`;
     $('#prenom').oninput = (e) => save('tr_prenom', e.target.value.trim());
     if ($('#client')) $('#client').onchange = (e) => { save('tr_client', e.target.value.trim()); syncCoach(true).then(() => {}); };
