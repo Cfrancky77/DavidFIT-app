@@ -953,7 +953,7 @@
       ${hasContact() ? `<a class="card link" href="#/contact"><div class="row between"><h3>Contacter ${esc(BR.coach || 'le coach')}</h3><span class="link-accent">›</span></div></a>` : ''}
       <p class="muted" id="ver" style="text-align:center">${esc(BR.nomApp)} v${esc(window.APP_VERSION || 'dev')}${hasContact() ? '' : ' · coordonnées du coach à venir'}</p>
       ${BR.majDepot ? `${updateHtml(true)}<p style="text-align:center"><button class="link-btn" id="chk-upd">Rechercher une mise à jour</button></p>` : ''}
-      ${load('tr_dev', false) ? '<p style="text-align:center"><button class="link-btn" id="chg-sheet">Changer le tableau du coach</button></p>' : ''}`;
+      ${load('tr_dev', false) ? `${BR.partageUrl ? '<a class="card link" href="#/coach"><div class="row between"><h3>Mode coach : suivi des élèves</h3><span class="link-accent">›</span></div></a>' : ''}<p style="text-align:center"><button class="link-btn" id="chg-sheet">Changer le tableau du coach</button></p>` : ''}`;
     $('#prenom').oninput = (e) => save('tr_prenom', e.target.value.trim());
     if ($('#client')) $('#client').onchange = (e) => { save('tr_client', e.target.value.trim()); syncCoach(true).then(() => {}); };
     $('#replay-ob').onclick = () => { save('tr_onboarded', false); route(); };
@@ -1455,6 +1455,109 @@
     };
   }
 
+  // ---------- mode coach : suivi des élèves (caché : 7 appuis sur la version dans Réglages) ----------
+  // Lit les séances reçues par le script du coach, protégées par un code (propriété CODE_COACH du script). Rien n'est gardé sur l'appareil sauf le code.
+  let coachData = null;
+  async function loadCoachData(force) {
+    if (coachData && !force && Date.now() - coachData.at < 120e3) return coachData;
+    const code = load('tr_coachcode', '');
+    const r = await fetch(BR.partageUrl + (BR.partageUrl.includes('?') ? '&' : '?') + 'action=suivi&code=' + encodeURIComponent(code));
+    const j = await r.json();
+    if (!j || !j.ok) { const e = new Error(j && j.erreur === 'non-configure' ? 'non-configure' : 'code'); throw e; }
+    const sessions = {};
+    j.lignes.forEach(([id, date, client, seance, exo, detail, kg, vol, ech, fin, note]) => {
+      const s = sessions[id] = sessions[id] || { id, date, client, seance, ech: ech === 'oui', fin: fin === 'oui', note, exos: [] };
+      if (exo) s.exos.push({ nom: exo, detail, kg: Number(kg) || 0, vol: Number(vol) || 0 });
+    });
+    const clients = {};
+    Object.values(sessions).forEach((s) => { (clients[s.client] = clients[s.client] || []).push(s); });
+    Object.values(clients).forEach((l) => l.sort((a, b) => a.date.localeCompare(b.date)));
+    return (coachData = { at: Date.now(), clients });
+  }
+  const cDay = (d) => String(d).slice(0, 10);
+  const daysAgo = (d) => Math.floor((Date.now() - Date.parse(d)) / 864e5);
+  const fmtDay = (d) => new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  function weekCounts(list, weeks) {
+    // jours d'entraînement distincts par semaine glissante (0 = les 7 derniers jours)
+    return Array.from({ length: weeks }, (_, w) => new Set(list.filter((s) => { const a = daysAgo(s.date); return a >= w * 7 && a < (w + 1) * 7; }).map((s) => cDay(s.date))).size);
+  }
+  const clientSelect = (clients, cur) => `<select class="field" id="co-sel" aria-label="Choisir un élève"><option value="">Tous les élèves</option>${Object.keys(clients).sort().map((c) => `<option value="${esc(c)}"${c === cur ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
+  const bindClientSelect = () => { const el = $('#co-sel'); if (el) el.onchange = () => { location.hash = el.value ? '#/coach/' + encodeURIComponent(el.value) : '#/coach'; }; };
+  async function viewCoach(client) {
+    setTitle('Mode coach', client ? '#/coach' : '#/reglages'); setTab('reglages');
+    if (!BR.partageUrl) { view.innerHTML = '<div class="card">Le suivi des élèves n\'est pas configuré.</div>'; return; }
+    if (!load('tr_coachcode', '')) {
+      const c = await ask('Code coach (défini dans le script de suivi, propriété CODE_COACH) :', '');
+      if (!c || !c.trim()) { location.hash = '#/reglages'; return; }
+      save('tr_coachcode', c.trim());
+    }
+    view.innerHTML = '<div class="card">Chargement du suivi…</div>';
+    let data;
+    try { data = await loadCoachData(false); } catch (e) {
+      const msg = e.message === 'code' ? 'Code coach refusé.' : e.message === 'non-configure' ? 'Le script n\'a pas encore de code coach (propriété CODE_COACH) : voir programmes/SUIVI.md.' : 'Suivi inaccessible (hors ligne ?). Le script doit aussi être à jour (nouvelle version déployée).';
+      view.innerHTML = `<div class="card"><p>${esc(msg)}</p><div class="row" style="gap:8px"><button class="btn small" id="co-retry">Réessayer</button>${e.message === 'code' ? '<button class="btn small ghost" id="co-code">Changer le code</button>' : ''}</div></div>`;
+      $('#co-retry').onclick = () => viewCoach(client);
+      if ($('#co-code')) $('#co-code').onclick = () => { save('tr_coachcode', ''); viewCoach(client); };
+      return;
+    }
+    if (client) return viewCoachEleve(client, data.clients[client] || [], data.clients);
+    const rows = Object.entries(data.clients).map(([c, l]) => ({ c, l, last: l[l.length - 1], w: weekCounts(l, 4) }))
+      .sort((a, b) => b.last.date.localeCompare(a.last.date));
+    view.innerHTML = `${clientSelect(data.clients, '')}<p></p><div class="row between"><div class="muted">${rows.length} élève(s) · jours d'entraînement sur les 4 dernières semaines</div><button class="btn small ghost" id="co-ref">Actualiser</button></div>`
+      + (rows.length ? rows.map(({ c, l, last, w }) => {
+        const a = daysAgo(last.date);
+        return `<a class="card link" href="#/coach/${encodeURIComponent(c)}"><div class="row between"><h3>${esc(c)}</h3><span class="badge ${a > 10 ? '' : 'accent'}">${a === 0 ? "aujourd'hui" : a === 1 ? 'hier' : 'il y a ' + a + ' j'}</span></div>
+          <div class="muted">${l.length} séance(s) reçue(s) · semaines (récente → ancienne) : ${w.join(' · ')}</div></a>`;
+      }).join('') : '<div class="card muted">Aucune séance reçue pour l\'instant.</div>')
+      + '<p style="text-align:center"><button class="link-btn" id="co-code">Changer le code coach</button></p>';
+    bindClientSelect();
+    $('#co-ref').onclick = () => { coachData = null; viewCoach(''); };
+    $('#co-code').onclick = () => { save('tr_coachcode', ''); coachData = null; viewCoach(''); };
+  }
+  async function viewCoachEleve(client, list, clients) {
+    setTitle(client, '#/coach');
+    if (!list.length) { view.innerHTML = clientSelect(clients, client) + '<div class="card muted">Aucune séance reçue pour cet élève.</div>'; bindClientSelect(); return; }
+    const w = weekCounts(list, 4), last = list[list.length - 1];
+    const bar = (n) => `<div style="flex:1;text-align:center"><div style="height:${8 + n * 14}px;background:var(--accent,#007DC0);border-radius:4px;margin:0 4px"></div><div class="muted" style="font-size:12px">${n}</div></div>`;
+    // programme de l'élève : fetchCoach lit son onglet dans le tableau des programmes
+    let prog = [];
+    try { prog = (await fetchCoach(client)).seances; } catch (e) { /* hors ligne : pas de comparaison */ }
+    const byName = new Map(prog.map((p) => [slug(p.nom), p]));
+    const stats = prog.map((p) => {
+      const done = list.filter((s) => slug(s.seance) === slug(p.nom));
+      const pct = done.length ? Math.round(done.reduce((t, s) => t + Math.min(1, new Set(s.exos.map((e) => nameKey(e.nom))).size / Math.max(1, p.exercices.length)), 0) / done.length * 100) : null;
+      const l = done[done.length - 1];
+      return { p, n: done.length, pct, last: l };
+    });
+    // écarts avec le programme : exercices non faits / ajoutés ou remplacés, séances sautées (pas faites depuis 14 jours)
+    const gap = (ses) => {
+      const p = byName.get(slug(ses.seance)); if (!p) return null;
+      const done = new Set(ses.exos.map((e) => nameKey(e.nom))), plan = new Set(p.exercices.map((e) => nameKey(e.nom)));
+      return { sautes: p.exercices.filter((e) => !done.has(nameKey(e.nom))).map((e) => e.nom), ajoutes: ses.exos.filter((e) => !plan.has(nameKey(e.nom))).map((e) => e.nom) };
+    };
+    const gaps = new Map(list.map((x) => [x.id, gap(x)]));
+    const sautees = stats.filter((t) => !t.n || daysAgo(t.last.date) > 14);
+    const nEch = list.filter((x) => x.ech).length, nFin = list.filter((x) => x.fin).length;
+    const volSem = Array.from({ length: 4 }, (_, k) => list.filter((x) => { const a = daysAgo(x.date); return a >= k * 7 && a < (k + 1) * 7; }).reduce((t, x) => t + x.exos.reduce((u, e) => u + e.vol, 0), 0));
+    // progression par exercice : première vs dernière charge max sur les 8 dernières semaines
+    const ex = {};
+    list.filter((s) => daysAgo(s.date) <= 56).forEach((s) => s.exos.forEach((e) => { const k = nameKey(e.nom); (ex[k] = ex[k] || { nom: e.nom, pts: [] }).pts.push({ d: s.date, kg: e.kg, detail: e.detail }); }));
+    const trend = Object.values(ex).map((e) => { const a = e.pts[0].kg, b = e.pts[e.pts.length - 1].kg; return { ...e, a, b, n: e.pts.length }; }).sort((x, y) => y.n - x.n);
+    const arrow = (a, b) => (b > a ? '<span style="color:#2a9d4a">▲ +' + (b - a) + ' kg</span>' : b < a ? '<span style="color:#d33">▼ ' + (b - a) + ' kg</span>' : '<span class="muted">= stable</span>');
+    view.innerHTML = `${clientSelect(clients, client)}<p></p><div class="card"><h3>Régularité</h3>
+      <div class="muted">Dernière séance : ${esc(fmtDay(last.date))} (${daysAgo(last.date)} j) · ${list.length} séance(s) reçue(s) · jours d'entraînement par semaine :</div>
+      <div class="row" style="align-items:flex-end;margin-top:8px;min-height:60px">${[...w].reverse().map(bar).join('')}</div>
+      <div class="muted" style="font-size:12px;text-align:center">il y a 4 semaines → cette semaine</div>
+      <div class="muted" style="margin-top:8px">Échauffement fait : ${nEch}/${list.length} · finisher : ${nFin}/${list.length}<br>Volume (kg × reps) par semaine, récente → ancienne : ${volSem.map((v) => v.toLocaleString('fr-FR')).join(' · ')}</div></div>
+      ${sautees.length ? `<div class="card" style="border-left:4px solid #e0a000"><h3>⚠ Séances sautées</h3>${sautees.map((t) => `<div>${esc(t.p.nom)} <span class="muted">${t.n ? 'pas faite depuis ' + daysAgo(t.last.date) + ' j' : 'jamais faite'}</span></div>`).join('')}</div>` : ''}
+      <div class="card"><h3>Programme suivi</h3>${stats.length ? stats.map((s) => `<div class="row between" style="padding:6px 0;border-top:1px solid var(--line,#8883)"><div>${esc(s.p.nom)}<div class="muted" style="font-size:12px">${s.n ? 'dernière : ' + esc(fmtDay(s.last.date)) : 'jamais faite'}</div></div><div style="text-align:right"><b>${s.n}</b> fois${s.pct === null ? '' : `<div class="muted" style="font-size:12px">${s.pct} % des exercices faits</div>`}</div></div>`).join('') : '<div class="muted">Programme de l\'élève introuvable dans le tableau (hors ligne ou code client différent).</div>'}</div>
+      <div class="card"><h3>Charges (8 dernières semaines)</h3>${trend.length ? trend.slice(0, 25).map((t) => `<div class="row between" style="padding:6px 0;border-top:1px solid var(--line,#8883)"><div>${esc(t.nom)}<div class="muted" style="font-size:12px">${t.n} séance(s) · ${t.a} → ${t.b} kg max</div></div><div>${arrow(t.a, t.b)}</div></div>`).join('') : '<div class="muted">Pas de séance récente.</div>'}</div>
+      <div class="card"><h3>Dernières séances</h3>${[...list].reverse().slice(0, 8).map((s) => `<details style="padding:6px 0;border-top:1px solid var(--line,#8883)"><summary>${esc(fmtDay(s.date))} · ${esc(s.seance)} <span class="muted">(${s.exos.length} exo)</span>${gaps.get(s.id) && (gaps.get(s.id).sautes.length || gaps.get(s.id).ajoutes.length) ? ' <span style="color:#e0a000">⚠</span>' : ''}</summary>
+        ${gaps.get(s.id) && gaps.get(s.id).sautes.length ? `<div style="font-size:13px;color:#d33">Non faits : ${gaps.get(s.id).sautes.map(esc).join(', ')}</div>` : ''}${gaps.get(s.id) && gaps.get(s.id).ajoutes.length ? `<div style="font-size:13px;color:#e0a000">Ajoutés ou remplacés : ${gaps.get(s.id).ajoutes.map(esc).join(', ')}</div>` : ''}
+        ${s.exos.map((e) => `<div class="muted" style="font-size:13px">${esc(e.nom)} : ${esc(e.detail)}</div>`).join('')}${s.note ? `<div style="font-size:13px;margin-top:4px">📝 ${esc(s.note)}</div>` : ''}</details>`).join('')}</div>`;
+    bindClientSelect();
+  }
+
   function viewContact() {
     setTitle('Contact', '#/reglages'); setTab('reglages');
     const c = BR.contact;
@@ -1575,6 +1678,7 @@
       case 'progres': return parts[1] ? viewProgresEx(parts[1]) : viewProgres();
       case 'reglages': return viewReglages();
       case 'contact': return viewContact();
+      case 'coach': return viewCoach(parts[1] ? decodeURIComponent(parts[1]) : '');
       case 'entrainement': return viewEntrainement();
       case 'bibliotheque': return viewBibliotheque();
       case 'editer': return viewEditer(parts[1] || 'new');

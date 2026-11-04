@@ -48,7 +48,25 @@ function doPost(e) {
 }
 
 // Pour vérifier le déploiement : ouvrir l'adresse dans un navigateur affiche {"ok":true}.
-function doGet() { return reponse_({ ok: true, service: 'suivi' }); }
+// Mode coach de l'appli : ?action=suivi&code=... renvoie les séances reçues, SEULEMENT si le code est le bon.
+// Le code se définit dans Apps Script : Paramètres du projet (roue crantée) → Propriétés du script → CODE_COACH (long, secret).
+// Sans cette propriété, la lecture est impossible (le script reste en « ajout seulement »).
+function doGet(e) {
+  const p = (e && e.parameter) || {};
+  if (p.action !== 'suivi') return reponse_({ ok: true, service: 'suivi' });
+  const attendu = PropertiesService.getScriptProperties().getProperty('CODE_COACH');
+  if (!attendu || String(p.code || '') !== attendu) {
+    Utilities.sleep(1500); // ralentit les essais au hasard
+    return reponse_({ ok: false, erreur: attendu ? 'code' : 'non-configure' });
+  }
+  const f = feuille_();
+  const n = Math.max(0, f.getLastRow() - 1);
+  const depuis = Math.max(2, f.getLastRow() - 2999); // 3000 dernières lignes au plus
+  const vals = n ? f.getRange(depuis, 1, f.getLastRow() - depuis + 1, ENTETES.length).getValues() : [];
+  // [id, date, client, séance, exercice, détail, charge max, volume, échauffement, finisher, note]
+  const lignes = vals.map(function (r) { return [r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11]]; });
+  return reponse_({ ok: true, lignes: lignes });
+}
 
 function ajouter_(f, lignes) {
   f.getRange(f.getLastRow() + 1, 1, lignes.length, ENTETES.length).setValues(lignes);
