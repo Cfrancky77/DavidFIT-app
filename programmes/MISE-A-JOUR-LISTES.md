@@ -23,3 +23,7 @@ Dans Google Sheets, une liste déroulante ne peut pas dépendre d'une autre cell
 4. *Extensions → Apps Script* : coller le contenu de `groupe-apps-script.gs`, Enregistrer. Rien d'autre à faire.
 
 Un message « Liste … appliquée » s'affiche en bas à droite à chaque choix de groupe (s'il n'apparaît jamais, le script n'est pas enregistré ou pas dans ce Sheets). Test : en C2 choisir « Jambes » → la liste en D2 ne montre que des exercices de jambes. Les lignes dont le groupe n'a pas été (re)choisi gardent la liste complète.
+
+## Liste déroulante pour la colonne « Séance » (A)
+
+Dans l'onglet **Listes**, colonne **Q** : « Séances » en Q1, puis Jambes, Dos / Biceps, Pecs / Triceps, Épaules / Abdos, Haut du corps, Bas du corps, Full body, Cardio (à compléter). Dans chaque onglet de programme : validation de **A2:A500** = *Menu déroulant (depuis une plage)* `Listes!Q2:Q50`, avec avertissement (un autre nom reste accepté). Le nom de séance doit rester identique sur toutes les lignes d'une même séance.
