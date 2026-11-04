@@ -1521,22 +1521,23 @@
     const bar = (n) => `<div style="flex:1;text-align:center"><div style="height:${8 + n * 14}px;background:var(--accent,#007DC0);border-radius:4px;margin:0 4px"></div><div class="muted" style="font-size:12px">${n}</div></div>`;
     // programme de l'élève : fetchCoach lit son onglet dans le tableau des programmes
     let prog = [];
-    try { prog = (await fetchCoach(client)).seances; } catch (e) { /* hors ligne : pas de comparaison */ }
-    const byName = new Map(prog.map((p) => [slug(p.nom), p]));
+    let aProg = false; // l'élève a-t-il un programme perso ? Sinon les séances « Commun » ne sont pas un engagement : pas d'alerte « sautée »
+    try { const r = await fetchCoach(client); aProg = r.perso; prog = r.perso ? r.seances.filter((x) => x.perso) : r.seances; } catch (e) { /* hors ligne : pas de comparaison */ }
+    const byName = new Map(prog.map((p) => [nameKey(p.nom), p]));
     const stats = prog.map((p) => {
-      const done = list.filter((s) => slug(s.seance) === slug(p.nom));
+      const done = list.filter((s) => nameKey(s.seance) === nameKey(p.nom));
       const pct = done.length ? Math.round(done.reduce((t, s) => t + Math.min(1, new Set(s.exos.map((e) => nameKey(e.nom))).size / Math.max(1, p.exercices.length)), 0) / done.length * 100) : null;
       const l = done[done.length - 1];
       return { p, n: done.length, pct, last: l };
     });
     // écarts avec le programme : exercices non faits / ajoutés ou remplacés, séances sautées (pas faites depuis 14 jours)
     const gap = (ses) => {
-      const p = byName.get(slug(ses.seance)); if (!p) return null;
+      const p = byName.get(nameKey(ses.seance)); if (!p) return null;
       const done = new Set(ses.exos.map((e) => nameKey(e.nom))), plan = new Set(p.exercices.map((e) => nameKey(e.nom)));
       return { sautes: p.exercices.filter((e) => !done.has(nameKey(e.nom))).map((e) => e.nom), ajoutes: ses.exos.filter((e) => !plan.has(nameKey(e.nom))).map((e) => e.nom) };
     };
     const gaps = new Map(list.map((x) => [x.id, gap(x)]));
-    const sautees = stats.filter((t) => !t.n || daysAgo(t.last.date) > 14);
+    const sautees = aProg ? stats.filter((t) => !t.n || daysAgo(t.last.date) > 14) : [];
     const nEch = list.filter((x) => x.ech).length, nFin = list.filter((x) => x.fin).length;
     const volSem = Array.from({ length: 4 }, (_, k) => list.filter((x) => { const a = daysAgo(x.date); return a >= k * 7 && a < (k + 1) * 7; }).reduce((t, x) => t + x.exos.reduce((u, e) => u + e.vol, 0), 0));
     // progression par exercice : première vs dernière charge max sur les 8 dernières semaines
