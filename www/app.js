@@ -933,7 +933,8 @@
       ${BR.partageUrl ? `<div class="card"><h3>Partage avec ${esc(BR.coach || 'ton coach')}</h3>
       <label class="row"><input type="checkbox" id="share" ${load('tr_partage', false) ? 'checked' : ''} ${load('tr_client', '') ? '' : 'disabled'}> <span>Partager ma progression avec mon coach</span></label>
       <div class="muted" style="font-size:12px;margin-top:6px">${load('tr_client', '') ? '' : 'Renseigne d\'abord ton code client. '}Après chaque séance, l'appli envoie ton code client, la date, les exercices, les charges, répétitions ou durées et ta note. Rien d'autre : ni prénom, ni taille, ni poids. Tu peux arrêter quand tu veux ; ce qui a déjà été envoyé reste chez ton coach.</div>
-      ${shareOn() ? `<div class="row between" style="margin-top:8px"><span class="muted" id="share-state"></span><button class="btn small ghost" id="share-now">Envoyer maintenant</button></div>` : ''}</div>` : ''}
+      ${shareOn() ? `<div class="row between" style="margin-top:8px"><span class="muted" id="share-state"></span><button class="btn small ghost" id="share-now">Envoyer maintenant</button></div>
+      <div class="row between" style="margin-top:8px"><span class="muted" style="font-size:12px">${h.length} séance(s) sur ce téléphone. Les doublons sont ignorés côté coach.</span><button class="btn small ghost" id="share-all">Renvoyer tout l'historique</button></div>` : ''}</div>` : ''}
       <div class="card"><h3>Apparence</h3><div class="seg" id="theme">
       ${[['system', 'Système'], ['light', 'Clair'], ['dark', 'Sombre']].map(([k, l]) => `<button data-t="${k}" class="${theme === k ? 'on' : ''}">${l}</button>`).join('')}
       </div></div>
@@ -953,11 +954,18 @@
       ${hasContact() ? `<a class="card link" href="#/contact"><div class="row between"><h3>Contacter ${esc(BR.coach || 'le coach')}</h3><span class="link-accent">›</span></div></a>` : ''}
       <p class="muted" id="ver" style="text-align:center">${esc(BR.nomApp)} v${esc(window.APP_VERSION || 'dev')}${hasContact() ? '' : ' · coordonnées du coach à venir'}</p>
       ${BR.majDepot ? `${updateHtml(true)}<p style="text-align:center"><button class="link-btn" id="chk-upd">Rechercher une mise à jour</button></p>` : ''}
-      ${load('tr_dev', false) ? `${BR.partageUrl ? '<a class="card link" href="#/coach"><div class="row between"><h3>Mode coach : suivi des élèves</h3><span class="link-accent">›</span></div></a>' : ''}<p style="text-align:center"><button class="link-btn" id="chg-sheet">Changer le tableau du coach</button></p>` : ''}`;
+      ${load('tr_dev', false) ? `${BR.partageUrl ? '<a class="card link" href="#/coach"><div class="row between"><h3>Mode coach : suivi des élèves</h3><span class="link-accent">›</span></div></a>' : ''}<p style="text-align:center"><button class="link-btn" id="chg-sheet">Changer le tableau du coach</button></p>
+      <div class="card"><h3>Restaurer par défaut</h3><div class="muted" style="font-size:13px">Efface sur CE téléphone : séances, programmes perso, réglages, code client et code coach (les images téléchargées sont gardées). Ce qui a déjà été envoyé au coach reste chez lui. Exporte d'abord si tu veux une copie.</div><p></p><button class="btn block ghost" id="reset-all" style="color:#d33">Tout effacer et recommencer</button></div>` : ''}`;
     $('#prenom').oninput = (e) => save('tr_prenom', e.target.value.trim());
     if ($('#client')) $('#client').onchange = (e) => { save('tr_client', e.target.value.trim()); syncCoach(true).then(() => {}); };
     $('#replay-ob').onclick = () => { save('tr_onboarded', false); route(); };
     if ($('#chg-sheet')) $('#chg-sheet').onclick = changeSheet;
+    if ($('#reset-all')) $('#reset-all').onclick = async () => {
+      const r = await ask('Tout effacer sur ce téléphone ? Tape EFFACER pour confirmer :', '');
+      if (!r || r.trim().toUpperCase() !== 'EFFACER') return;
+      try { Object.keys(localStorage).filter((k) => k.startsWith('tr_')).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* ignoré */ }
+      location.hash = '#/'; location.reload();
+    };
     { let taps = 0, t0 = 0; $('#ver').onclick = () => { const n = Date.now(); taps = n - t0 < 1500 ? taps + 1 : 1; t0 = n; if (taps >= 7) { taps = 0; save('tr_dev', !load('tr_dev', false)); viewReglages(); } }; }
     if ($('#share')) {
       $('#share').onchange = (e) => {
@@ -978,6 +986,15 @@
         await flushShare();
         $('#share-state').textContent = left() ? `${left()} séance(s) pas encore envoyée(s) : vérifie la connexion.` : 'Tout est envoyé ✓';
         $('#share-now').disabled = false;
+      };
+      $('#share-all').onclick = async () => {
+        const b = $('#share-all'); b.disabled = true; $('#share-state').textContent = 'Envoi de tout l\'historique…';
+        const q = load('tr_outbox', []); const ids = new Set(q.map((p) => p.id));
+        h.forEach((x) => { if (!ids.has(x.id)) q.push(sharePayload(x)); });
+        save('tr_outbox', q);
+        await flushShare();
+        $('#share-state').textContent = left() ? `${left()} séance(s) pas encore envoyée(s) : vérifie la connexion.` : `Historique envoyé ✓ (${h.length} séance(s))`;
+        b.disabled = false;
       };
     }
     if ($('#imgdl')) {
