@@ -2,13 +2,14 @@
   "name": "training-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Training pour PC (Linux) : la même appli que sur Android, dans une fenêtre",
+  "description": "Training pour PC (Linux et Windows) : la même appli que sur Android, dans une fenêtre",
   "author": "FCDI",
   "license": "MIT",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --linux AppImage --publish never"
+    "build": "electron-builder --linux AppImage --publish never",
+    "build:win": "electron-builder --win nsis --publish never"
   },
   "devDependencies": {
     "electron": "45.2.1",
@@ -46,7 +47,25 @@
         "owner": "Cfrancky77",
         "repo": "depot"
       }
-    ]
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "../assets/icon-only.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Training-Setup-${arch}.exe",
+      "shortcutName": "Training"
+    }
   },
   "desktopName": "training.desktop"
 }
