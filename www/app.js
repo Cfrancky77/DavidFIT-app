@@ -112,7 +112,8 @@
   const STOCK = ['front_squat', 'deadlift', 'hip_thrust', 'fente_bulgare', 'leg_extension', 'tirage_vertical', 'rowing_ez',
     'retropulsion_corde', 'tirage_bucheron', 'curl_poulie_basse', 'dev_couche', 'dev_incline_halteres', 'dev_militaire',
     'ecarte_vis_a_vis', 'extension_triceps', 'rameur', 'elliptique', 'velo', 'pompes'].concat(window.STOCK_EXTRA || [])
-    .concat(((window.REPLACEMENTS || {}).groupes || []).flatMap((g) => g.exercices.map((e) => e.img)).filter(Boolean));
+    .concat(((window.REPLACEMENTS || {}).groupes || []).flatMap((g) => g.exercices.map((e) => e.img)).filter(Boolean))
+    .concat(Object.values(window.ETIREMENTS || {}).flat().map((e) => e.img));
   const WEB = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
   const isWeb = (k) => typeof k === 'string' && k.startsWith('web:');
   const isImg = (k) => STOCK.includes(k) || isWeb(k);
@@ -512,11 +513,12 @@
   }
 
   function previewList(s) {
+    const et = stretchesFor(s);
     return s.exercices.map((ex) => {
       const m = machineFor(ex);
       return `<div class="card"><h3>${esc(ex.nom)}</h3><div class="muted">${ex.series} × ${esc(ex.reps)}${ex.par_cote ? ' par côté' : ''} · repos ${fmtTime(ex.repos_s)}</div>${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
         <div class="machine"><div class="row">${thumb(m)}<span>Machine : <b>${esc(m.main)}</b></span></div>${varOf(ex) ? `<div class="alt">Sur machines : ${esc(varOf(ex).nom)}</div>` : ''}</div></div>`;
-    }).join('');
+    }).join('') + (et.length ? `<div class="card"><h3>Retour au calme</h3><div class="muted">${et.map((e) => esc(e.nom)).join(' · ')}</div></div>` : '');
   }
 
   // Programme tel qu'il est suivi dans cette séance : exercices remplacés (cur.remplace), retirés (cur.retires)
@@ -527,10 +529,14 @@
     return { ...base, exercices: base.exercices.filter((e) => !ret.has(e.id)).map((e) => (rem[e.id] ? { ...e, ...rem[e.id] } : e)).concat(aj) };
   };
 
+  let elapsedTick = null;
+  const fmtHour = (iso) => new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const fmtDuree = (ms) => { const m = Math.max(0, Math.round(ms / 60000)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${pad(m % 60)}`; };
   function renderSession(base, cur) {
     const s = withRemplace(base, cur);
     const persist = () => setCurrent(cur);
-    let html = `<div class="card"><div class="row between"><b>Progression</b><span class="muted" id="prog-txt"></span></div><div class="progress"><div id="prog-bar"></div></div></div>
+    let html = `<div class="card"><div class="row between"><b>Progression</b><span class="muted" id="prog-txt"></span></div><div class="progress"><div id="prog-bar"></div></div>
+      <div class="muted" style="margin-top:6px">⏱ Commencée à ${fmtHour(cur.date)} · <span id="elapsed"></span></div></div>
       ${hasWarm(s) || s.consigne ? `<div class="card">${hasWarm(s) ? `<label class="row"><input type="checkbox" id="warm" ${cur.echauffement ? 'checked' : ''}>
       <span><b>Échauffement</b> : ${esc(s.echauffement.exercice)}${s.echauffement.duree_min ? ' ' + s.echauffement.duree_min + ' min' : ''}${s.echauffement.resistance ? ', résistance ' + esc(s.echauffement.resistance.toLowerCase()) : ''}${warmRest(s) ? ` · récupération ${fmtTime(warmRest(s))}` : ''}
       <div class="machine" style="margin:4px 0 0"><div class="row">${thumbHtml({ stock: stockKey(s.echauffement.exercice) })}<b>${esc(machineName(s.echauffement.exercice.toLowerCase()))}</b></div></div></span></label>
@@ -561,6 +567,11 @@
     });
 
     html += `<button class="btn block ghost" id="add-ex">+ Ajouter un exercice</button><p></p>`;
+    const etirs = stretchesFor(s); const faits = new Set(cur.etirFaits || []);
+    if (etirs.length) html += `<div class="card"><h3>Retour au calme</h3><p class="muted" style="margin-top:0">Étirements doux, sans à-coups${(s.etirements || []).length ? '' : ' (choisis selon les muscles travaillés)'}.</p>
+      ${etirs.map((e, i) => `<div class="row" style="gap:8px;margin:8px 0"><input type="checkbox" data-etir="${i}" ${faits.has(e.nom) ? 'checked' : ''} aria-label="Étirement fait">
+        ${thumbHtml({ stock: e.img })}<span style="flex:1;min-width:0">${esc(e.nom)}<div class="muted">${e.duree_s} s${e.par_cote ? ' par côté' : ''}</div></span>
+        <button class="btn small" data-etir-go="${i}">▶</button></div>`).join('')}</div>`;
     html += `<div class="card">${hasFin(s) ? `<label class="row"><input type="checkbox" id="fin" ${cur.finisher ? 'checked' : ''}>
       <span><b>Finisher</b> : ${esc(s.finisher.exercice)}<div class="muted">${esc(s.finisher.objectif || '')}</div>
       <div class="row" style="margin-top:6px">${thumbHtml({ stock: stockKey(s.finisher.exercice) })}</div></span></label>` : ''}
@@ -569,6 +580,9 @@
       <p></p><button class="btn block ghost" id="abandon">Abandonner la séance</button>`;
     view.innerHTML = html;
     bindThumbs(view);
+    // Temps écoulé depuis « Commencer la séance », mis à jour chaque minute tant que la séance est affichée.
+    const tickElapsed = () => { const el = $('#elapsed'); if (!el) return clearInterval(elapsedTick); el.textContent = fmtDuree(Date.now() - new Date(cur.date)); };
+    clearInterval(elapsedTick); elapsedTick = setInterval(tickElapsed, 30000); tickElapsed();
     const updateProg = () => {
       const all = Object.values(cur.exercices).flat(); const d = all.filter((x) => x.done).length;
       $('#prog-txt').textContent = `${d}/${all.length} séries`;
@@ -589,6 +603,13 @@
     if ($('#warm-go')) $('#warm-go').onclick = () => startTimer(s.echauffement.duree_min * 60, warmRest(s) ? `récupération ${fmtTime(warmRest(s))}` : firstEx, { label: 'Échauffement', onDone: warmDone });
     if ($('#warm-rest')) $('#warm-rest').onclick = warmRestTimer;
     if ($('#fin')) $('#fin').onchange = (e) => { cur.finisher = e.target.checked; persist(); };
+    const setEtir = (i, on) => { const f = new Set(cur.etirFaits || []); if (on) f.add(etirs[i].nom); else f.delete(etirs[i].nom); cur.etirFaits = [...f]; persist(); };
+    view.querySelectorAll('[data-etir]').forEach((c) => { c.onchange = () => setEtir(+c.dataset.etir, c.checked); });
+    view.querySelectorAll('[data-etir-go]').forEach((b) => { b.onclick = () => {
+      const i = +b.dataset.etirGo; const e = etirs[i]; const nx = etirs[i + 1];
+      startTimer(e.duree_s * (e.par_cote ? 2 : 1), e.par_cote ? `changer de côté à ${fmtTime(e.duree_s)}${nx ? ', puis ' + nx.nom : ''}` : (nx ? nx.nom : 'Fin de la séance'),
+        { label: e.nom, onDone: () => { setEtir(i, true); const c = view.querySelector(`[data-etir="${i}"]`); if (c) c.checked = true; closeTimer(); } });
+    }; });
     $('#note').oninput = (e) => { cur.note = e.target.value; persist(); };
     $('#add-ex').onclick = () => openReplace(base, null, cur, () => renderSession(base, cur), 'add');
 
@@ -683,6 +704,19 @@
   // ---------- remplacer un exercice (cette séance seulement) ----------
   const REPL = window.REPLACEMENTS || { groupes: [] };
   // Groupe musculaire d'un exercice : par son image, sinon par un mot de son nom.
+  // Retour au calme : étirements du coach (lignes « Étirement »), sinon 4 étirements pris tour à tour
+  // dans les groupes musculaires travaillés (le plus travaillé d'abord), 30 s chacun.
+  function stretchesFor(s) {
+    const ET = window.ETIREMENTS || {};
+    const byName = (nom) => Object.values(ET).flat().find((e) => nameKey(e.nom) === nameKey(nom));
+    if ((s.etirements || []).length) return s.etirements.map((e) => ({ img: (byName(e.nom) || {}).img || '', ...e }));
+    const count = {};
+    s.exercices.forEach((ex) => { const g = groupOf(ex); if (ET[g]) count[g] = (count[g] || 0) + 1; });
+    const groups = Object.keys(count).sort((a, b) => count[b] - count[a]);
+    const out = [];
+    for (let i = 0; out.length < 4 && groups.some((g) => ET[g][i]); i++) groups.forEach((g) => { if (ET[g][i] && out.length < 4) out.push({ ...ET[g][i], duree_s: 30 }); });
+    return out;
+  }
   function groupOf(ex) {
     const img = ex.img || ex.id;
     const byImg = REPL.groupes.find((g) => g.exercices.some((e) => e.img === img));
@@ -808,8 +842,7 @@
     if (!x) return viewHome();
     const s = seanceById(x.seanceId);
     setTitle(s ? s.nom : 'Séance', '#/agenda'); setTab('home');
-    const dur = x.fin ? Math.round((new Date(x.fin) - new Date(x.date)) / 60000) : null;
-    let html = `<div class="card"><h3>${fmtDate(x.date)}</h3><div class="muted">${dur !== null ? 'Durée : ' + dur + ' min · ' : ''}Échauffement ${x.echauffement ? 'fait' : 'non coché'} · finisher ${x.finisher ? 'fait' : 'non coché'}</div>
+    let html = `<div class="card"><h3>${fmtDate(x.date)}</h3><div class="muted">${x.fin ? `${fmtHour(x.date)} → ${fmtHour(x.fin)} (${fmtDuree(new Date(x.fin) - new Date(x.date))}) · ` : ''}Échauffement ${x.echauffement ? 'fait' : 'non coché'} · finisher ${x.finisher ? 'fait' : 'non coché'}${(x.etirFaits || []).length ? ` · ${x.etirFaits.length} étirement(s)` : ''}</div>
       ${x.note ? `<p>${esc(x.note)}</p>` : ''}</div>`;
     Object.entries(x.exercices).forEach(([exId, sets]) => {
       const ex = exById(exId);
@@ -1184,6 +1217,7 @@
       consigne: src.consigne ? String(src.consigne).slice(0, 300) : '',
       echauffement: { exercice: String((src.echauffement || {}).exercice || ''), duree_min: n((src.echauffement || {}).duree_min, 0), repos_s: warmRest(src), resistance: String((src.echauffement || {}).resistance || '') },
       finisher: { exercice: String((src.finisher || {}).exercice || ''), objectif: String((src.finisher || {}).objectif || '') },
+      etirements: (src.etirements || []).filter((e) => e && e.nom).map((e) => ({ nom: String(e.nom).slice(0, 80), duree_s: n(e.duree_s, 30), par_cote: !!e.par_cote })),
       exercices: (src.exercices || []).filter((e) => e && e.nom).map((e) => ({
         id: uid('e_'),
         nom: String(e.nom).slice(0, 80),
@@ -1337,6 +1371,7 @@
         const reps = get(r, 'Reps'), rest = get(r, 'Repos');
         s.echauffement = { exercice: ex, duree_min: parseInt(reps || rest, 10) || 5, repos_s: reps && rest ? parseRest(rest) : 60, resistance: note || get(r, 'Machine') };
       }
+      else if (type.startsWith('etir')) (s.etirements = s.etirements || []).push({ nom: ex, duree_s: timedSec(get(r, 'Reps')) || parseInt(get(r, 'Reps'), 10) || 30, par_cote: yes(get(r, 'Par côté')) });
       else if (type.startsWith('finish') || type.startsWith('fin')) s.finisher = { exercice: ex, objectif: [get(r, 'Reps'), note].filter(Boolean).join(' · ') };
       else if (type.startsWith('consigne') || (!ex && note)) s.consigne = [s.consigne, note || ex].filter(Boolean).join(' ');
       else if (ex) s.exercices.push({ nom: ex, series: get(r, 'Séries'), reps: get(r, 'Reps') || '10', repos_s: parseRest(get(r, 'Repos')) || 60, machine: get(r, 'Machine'), par_cote: yes(get(r, 'Par côté')), note, variante: get(r, 'Variante') });
@@ -1354,6 +1389,7 @@
       if (s.consigne) out.push(['', s.nom, 'Consigne', '', '', '', '', '', '', s.consigne]);
       if (hasWarm(s)) out.push(['', s.nom, 'Échauffement', s.echauffement.exercice, '', s.echauffement.duree_min ? s.echauffement.duree_min + ' min' : '', fmtTime(warmRest(s)), '', '', s.echauffement.resistance || '']);
       s.exercices.forEach((e) => out.push(['', s.nom, 'Exercice', e.nom, e.series, e.reps, fmtTime(e.repos_s || 0), machineFor(e).main, e.par_cote ? 'oui' : 'non', e.note || '', (e.variante || {}).nom || '']));
+      (s.etirements || []).forEach((e) => out.push(['', s.nom, 'Étirement', e.nom, '', e.duree_s + ' s', '', '', e.par_cote ? 'oui' : 'non', '']));
       if (hasFin(s)) out.push(['', s.nom, 'Finisher', s.finisher.exercice, '', '', '', '', '', s.finisher.objectif || '']);
     });
     return '﻿' + out.map((r) => r.map(csvCell).join(';')).join('\r\n') + '\r\n';

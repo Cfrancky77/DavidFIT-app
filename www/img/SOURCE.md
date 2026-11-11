@@ -110,3 +110,27 @@ wger.de (https://wger.de), images redimensionnées sur fond blanc. Ces images re
 - m_leg_curl_assis_*.jpg : « Leg Curls (sitting) », Everkinetic, CC BY-SA 3.0
 - m_shoulder_press_*.jpg : « Shoulder Press, on Machine », wger.de, CC BY-SA 3.0
 - m_lat_pulldown_*.jpg : « Close-grip Lat Pull Down », Franpol, CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/) ; une seule image (départ et arrivée identiques)
+
+## Étirements (retour au calme)
+
+Free Exercise DB (domaine public, Unlicense) ; _0 = position étirée, _1 = départ :
+- etir_hamstring_stretch_*.jpg : Hamstring_Stretch
+- etir_on_your_side_quad_stretch_*.jpg : On_Your_Side_Quad_Stretch
+- etir_kneeling_hip_flexor_*.jpg : Kneeling_Hip_Flexor
+- etir_knee_across_the_body_*.jpg : Knee_Across_The_Body
+- etir_calf_stretch_hands_against_wall_*.jpg : Calf_Stretch_Hands_Against_Wall
+- etir_seated_floor_hamstring_stretch_*.jpg : Seated_Floor_Hamstring_Stretch
+- etir_childs_pose_*.jpg : Childs_Pose
+- etir_one_arm_against_wall_*.jpg : One_Arm_Against_Wall
+- etir_cat_stretch_*.jpg : Cat_Stretch
+- etir_upper_back_stretch_*.jpg : Upper_Back_Stretch
+- etir_hug_knees_to_chest_*.jpg : Hug_Knees_To_Chest
+- etir_chest_and_front_of_shoulder_stretch_*.jpg : Chest_And_Front_Of_Shoulder_Stretch
+- etir_elbows_back_*.jpg : Elbows_Back
+- etir_shoulder_stretch_*.jpg : Shoulder_Stretch
+- etir_upward_stretch_*.jpg : Upward_Stretch
+- etir_triceps_stretch_*.jpg : Triceps_Stretch
+- etir_standing_biceps_stretch_*.jpg : Standing_Biceps_Stretch
+- etir_kneeling_forearm_stretch_*.jpg : Kneeling_Forearm_Stretch
+- etir_standing_lateral_stretch_*.jpg : Standing_Lateral_Stretch
+- etir_overhead_stretch_*.jpg : Overhead_Stretch

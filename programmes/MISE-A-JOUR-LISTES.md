@@ -33,3 +33,7 @@ Dans l'onglet **Listes**, colonne **Q** : « Séances » en Q1, puis Jambes, Dos
 Colonne facultative **Variante**, n'importe où (l'appli lit les colonnes par leur nom) : le nom de l'exercice équivalent sur **machine guidée**, par exemple « Chest press » pour « Développé couché ». Si au moins un exercice d'une séance a une variante, l'appli propose « Commencer en libre » ou « Commencer sur machines » ; sur machines, chaque exercice qui a une variante est remplacé par celle-ci (séries, reps et repos conservés). Ligne sans variante = exercice inchangé dans les deux modes. Anciens tableaux sans cette colonne : rien ne change.
 
 L'image et la machine sont retrouvées d'après le nom (même liste que la colonne Exercice) : choisir de préférence un nom de la liste. Validation conseillée : *Menu déroulant (depuis une plage)* `Listes!B2:B900`, avec « Afficher un avertissement ».
+
+## Lignes « Étirement » (retour au calme)
+
+Type **Étirement** : une ligne par étirement, nom dans *Exercice*, durée dans *Reps* (« 30 s », « 45 s », « 1 min » ; 30 s par défaut), *Par côté* = oui si chaque côté. S'il n'y en a aucune, l'appli propose d'elle-même 4 étirements selon les groupes musculaires travaillés (liste `ETIREMENTS` dans `www/remplacements.js`, photos Free Exercise DB). Un nom identique à un étirement de cette liste reprend sa photo.

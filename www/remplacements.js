@@ -212,3 +212,40 @@ window.IMG_EN = {
   m_shoulder_press: 'Shoulder Press',
   m_lat_pulldown: 'Close-grip Lat Pull Down'
 };
+
+// Étirements de retour au calme, par groupe musculaire (Free Exercise DB, domaine public, voir img/SOURCE.md).
+// Proposés en fin de séance selon les groupes travaillés, quand le coach n'en a pas indiqué (lignes « Étirement »).
+window.ETIREMENTS = {
+  jambes: [
+    { nom: 'Étirement des ischio-jambiers allongé (sangle ou serviette)', img: 'etir_hamstring_stretch', par_cote: true },
+    { nom: 'Étirement des quadriceps allongé sur le côté', img: 'etir_on_your_side_quad_stretch', par_cote: true },
+    { nom: 'Fléchisseurs de hanche à genou', img: 'etir_kneeling_hip_flexor', par_cote: true },
+    { nom: 'Fessiers : genou croisé sur le corps', img: 'etir_knee_across_the_body', par_cote: true },
+    { nom: 'Mollets mains contre le mur', img: 'etir_calf_stretch_hands_against_wall', par_cote: true },
+    { nom: 'Ischio-jambiers assis au sol', img: 'etir_seated_floor_hamstring_stretch', par_cote: true }
+  ],
+  dos: [
+    { nom: 'Posture de l\'enfant', img: 'etir_childs_pose' },
+    { nom: 'Grand dorsal : bras contre le mur', img: 'etir_one_arm_against_wall', par_cote: true },
+    { nom: 'Dos rond / dos creux (chat)', img: 'etir_cat_stretch' },
+    { nom: 'Haut du dos : bras tendus devant', img: 'etir_upper_back_stretch' },
+    { nom: 'Genoux à la poitrine', img: 'etir_hug_knees_to_chest' }
+  ],
+  pecs: [
+    { nom: 'Pectoraux et avant d\'épaule (bâton derrière)', img: 'etir_chest_and_front_of_shoulder_stretch' },
+    { nom: 'Pectoraux : coudes en arrière', img: 'etir_elbows_back' }
+  ],
+  epaules: [
+    { nom: 'Épaule : bras croisé devant la poitrine', img: 'etir_shoulder_stretch', par_cote: true },
+    { nom: 'Étirement bras tendus vers le haut', img: 'etir_upward_stretch' }
+  ],
+  bras: [
+    { nom: 'Triceps : coude derrière la tête', img: 'etir_triceps_stretch', par_cote: true },
+    { nom: 'Biceps : mains jointes dans le dos', img: 'etir_standing_biceps_stretch' },
+    { nom: 'Avant-bras à genoux', img: 'etir_kneeling_forearm_stretch' }
+  ],
+  abdos: [
+    { nom: 'Étirement latéral debout', img: 'etir_standing_lateral_stretch', par_cote: true },
+    { nom: 'Étirement bras au-dessus de la tête', img: 'etir_overhead_stretch' }
+  ]
+};
