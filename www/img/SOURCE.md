@@ -92,3 +92,21 @@ Images : Free Exercise DB (https://github.com/yuhonas/free-exercise-db), domaine
 - mountain_climbers_*.jpg : Mountain_Climbers
 - bucheron_poulie_*.jpg : Standing_Cable_Wood_Chop
 - roue_abdos_*.jpg : Ab_Roller
+
+## Variantes « machine guidée » (mode Machine)
+
+Free Exercise DB (domaine public, Unlicense) :
+- m_incline_press_*.jpg : Leverage_Incline_Chest_Press
+- m_triceps_ext_*.jpg : Machine_Triceps_Extension
+- m_dips_*.jpg : Dip_Machine
+- m_curl_*.jpg : Machine_Bicep_Curl
+- m_deadlift_*.jpg : Leverage_Deadlift
+- m_split_squat_*.jpg : Smith_Single-Leg_Split_Squat
+- m_seated_row_*.jpg : Leverage_Iso_Row
+
+wger.de (https://wger.de), images redimensionnées sur fond blanc. Ces images restent sous leur licence d'origine (partage dans les mêmes conditions) :
+- m_hack_squat_*.jpg : « Leg Press on Hackenschmidt Machine », Everkinetic, CC BY-SA 3.0 (https://creativecommons.org/licenses/by-sa/3.0/)
+- m_leg_curl_couche_*.jpg : « Leg Curls (laying) », Everkinetic, CC BY-SA 3.0
+- m_leg_curl_assis_*.jpg : « Leg Curls (sitting) », Everkinetic, CC BY-SA 3.0
+- m_shoulder_press_*.jpg : « Shoulder Press, on Machine », wger.de, CC BY-SA 3.0
+- m_lat_pulldown_*.jpg : « Close-grip Lat Pull Down », Franpol, CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/) ; une seule image (départ et arrivée identiques)

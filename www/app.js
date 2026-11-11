@@ -64,6 +64,8 @@
 
   // Réglage machine/photo d'un exercice ; à défaut, celui du même exercice des séances intégrées (même nom).
   const twinId = (ex) => { const k = String(ex.nom || '').trim().toLowerCase(); const t = DATA.seances.flatMap((s) => s.exercices).find((e) => e.id !== ex.id && e.nom.trim().toLowerCase() === k); return t && t.id; };
+  // Photo d'une machine guidée (mode Machine) : rangée par nom de variante, commune à tous les programmes.
+  const vmKey = (nom) => 'm:' + nameKey(nom);
   function machineFor(ex) {
     // Exercice remplacé en séance : ni réglage machine, ni photo, ni image de l'exercice d'origine.
     const M = getMachines(); const P = getPhotos(); const tw = ex.remplace ? null : twinId(ex);
@@ -72,7 +74,7 @@
       main: custom || machineName(ex.machine),
       custom: !!custom,
       alts: (ex.alternatives || []).map(machineName),
-      photo: ex.remplace ? null : (P[ex.id] || (tw && P[tw]) || null),
+      photo: ex.remplace ? (ex.vm ? P[vmKey(ex.nom)] || null : null) : (P[ex.id] || (tw && P[tw]) || null),
       stock: ex.remplace ? (ex.img || null) : (ex.img || ex.id),
     };
   }
@@ -115,6 +117,27 @@
   const isWeb = (k) => typeof k === 'string' && k.startsWith('web:');
   const isImg = (k) => STOCK.includes(k) || isWeb(k);
   const imgSrc = (k, n) => (isWeb(k) ? `${WEB}${k.slice(4)}/${n}.jpg` : `img/${k}_${n}.jpg`);
+  // Texte de recherche d'un exercice : nom, machine et nom anglais de son image (« seated row », « lat pulldown »…).
+  const enOf = (img) => (isWeb(img) ? img.slice(4).replace(/_/g, ' ') : (window.IMG_EN || {})[img] || '');
+  const exText = (e) => nameKey([e.nom, e.machine, enOf(e.img)].join(' '));
+  // q déjà passé par nameKey : chaque mot doit être le début d'un mot de l'exercice, dans n'importe quel ordre
+  // (« row » trouve « rowing », pas « narrow »).
+  const matchQ = (e, q) => { const t = exText(e).split(' '); return q.split(' ').every((w) => t.some((x) => x.startsWith(w))); };
+  // Variantes « machine » des séances intégrées et de la bibliothèque, proposées aussi dans la recherche.
+  const builtinEx = () => DATA.seances.concat(window.LIBRARY || []).flatMap((s) => s.exercices);
+  const uniqByName = (l) => { const seen = new Set(); return l.filter((e) => { const k = nameKey(e.nom); if (seen.has(k)) return false; seen.add(k); return true; }); };
+  // Exercice sur machine guidée (filtre « Machine » de la recherche) : variante machine, image m_*, ou machine
+  // guidée dans le nom / la machine (Smith, presse, leg press…). Poulies, barres, haltères, banc, poids du corps = libre.
+  const isMachineEx = (e) => e.vm || /^m_/.test(e.img || '') || /\b(machine|smith|presse|press machine|leg press|chest press|pec deck|hack squat)\b/.test(nameKey(`${e.nom} ${e.machine || ''}`));
+  // Liste proposée dans les recherches (remplacer, ajouter, éditeur) : groupe (ou recherche q) puis filtre Libre / Machine.
+  function exList(gid, q, kind) {
+    const cat = (window.CATALOGUE || []).map((c) => ({ nom: c[1], machine: c[3], img: 'web:' + c[0], g: c[2] }));
+    const vms = builtinEx().map((e) => e.variante).filter(Boolean);
+    const all = q ? REPL.groupes.flatMap((x) => x.exercices).concat(vms, cat)
+      : ((REPL.groupes.find((x) => x.id === gid) || { exercices: [] }).exercices).concat(vms.filter((v) => groupOf(v) === gid), cat.filter((c) => c.g === gid));
+    return uniqByName(all).filter((e) => (!q || matchQ(e, q)) && (kind === 'tout' || (kind === 'machine') === isMachineEx(e)));
+  }
+  const kindChips = (kind) => `<div class="chips">${[['tout', 'Tout'], ['libre', 'Libre'], ['machine', '🏋 Machine']].map(([k, n]) => `<button class="chip ${k === kind ? 'on' : ''}" data-k="${k}">${n}</button>`).join('')}</div>`;
   const stockKey = (name) => { const k = String(name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return STOCK.includes(k) ? k : null; };
   function showPhoto(src, stock) {
     const o = document.createElement('div');
@@ -212,10 +235,26 @@
   // ---------- minuteur de repos (popup) ----------
   // opts.label : titre (« Repos » par défaut) ; opts.onDone : appelé à la fin au lieu du « Go ! »
   // (sert à enchaîner échauffement → récupération). Au-delà d'une minute, affichage m:ss.
-  const timer = { end: 0, tick: null, paused: 0, onDone: null, long: false };
+  // opts.onStop(secondes faites) : appelé quand le minuteur s'arrête (fin, « Passer » ou autre minuteur lancé).
+  const timer = { end: 0, tick: null, paused: 0, onDone: null, onStop: null, total: 0, long: false };
+  // Temps réellement écoulé (pauses exclues, ±15 s pris en compte).
+  const timerElapsed = () => Math.max(0, Math.round(timer.total - Math.max(0, (timer.paused || (timer.end - Date.now())) / 1000)));
+  function stopTimerCb(sec) { const f = timer.onStop; timer.onStop = null; if (f) f(sec); }
+  // Écran allumé tant que le minuteur est affiché (Screen Wake Lock ; ignoré si non pris en charge).
+  let wakeLock = null;
+  async function keepAwake(on) {
+    try {
+      if (on && !wakeLock && navigator.wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
+      else if (!on && wakeLock) { const w = wakeLock; wakeLock = null; await w.release(); }
+    } catch (e) { wakeLock = null; }
+  }
+  // Android relâche le verrou quand l'appli passe en arrière-plan : on le reprend au retour si le minuteur est affiché.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !$('#timer').hidden) keepAwake(true); });
   function startTimer(seconds, next, opts = {}) {
-    timer.end = Date.now() + seconds * 1000;
-    timer.paused = 0; timer.onDone = opts.onDone || null; timer.long = seconds >= 60;
+    if (!$('#timer').hidden) stopTimerCb(timerElapsed());
+    timer.end = Date.now() + seconds * 1000; timer.total = seconds;
+    timer.paused = 0; timer.onDone = opts.onDone || null; timer.onStop = opts.onStop || null; timer.long = seconds >= 60;
+    keepAwake(true);
     $('#timer-label').textContent = opts.label || 'Repos';
     $('#timer-unit').textContent = timer.long ? 'minutes' : 'secondes';
     $('#timer-next').innerHTML = next ? 'Ensuite : <b>' + esc(next) + '</b>' : '';
@@ -226,13 +265,14 @@
     timer.tick = setInterval(updateTimer, 250);
     updateTimer();
   }
-  function closeTimer() { clearInterval(timer.tick); timer.onDone = null; $('#timer').hidden = true; }
+  function closeTimer() { clearInterval(timer.tick); timer.onDone = null; timer.onStop = null; $('#timer').hidden = true; keepAwake(false); }
   function updateTimer() {
     if (timer.paused) return;
     const left = Math.ceil((timer.end - Date.now()) / 1000);
     if (left <= 0) {
       clearInterval(timer.tick);
       buzz();
+      stopTimerCb(timer.total);
       const done = timer.onDone; timer.onDone = null;
       if (done) { done(); return; }
       $('#timer-value').textContent = 'Go !';
@@ -244,6 +284,7 @@
   }
   function shiftTimer(delta) {
     if ($('#timer').classList.contains('finished')) { if (delta > 0) startTimer(delta, null); return; }
+    timer.total += delta;
     if (timer.paused) { timer.paused = Math.max(1000, timer.paused + delta * 1000); $('#timer-value').textContent = timer.long ? fmtTime(Math.ceil(timer.paused / 1000)) : Math.ceil(timer.paused / 1000); return; }
     timer.end = Math.max(Date.now() + 1000, timer.end + delta * 1000); updateTimer();
   }
@@ -263,7 +304,8 @@
   $('#timer-pause').onclick = togglePause;
   $('#timer-skip').onclick = () => {
     // « Passer » pendant l'échauffement saute directement à la récupération
-    const done = timer.onDone; closeTimer(); if (done) done();
+    // Temps réellement fait transmis (repos ou série en durée arrêtés avant la fin).
+    const el = timerElapsed(); const done = timer.onDone; stopTimerCb(el); closeTimer(); if (done) done(el);
   };
 
   // ---------- partage de la progression avec le coach (facultatif, choix de l'élève) ----------
@@ -445,7 +487,8 @@
       view.innerHTML = `<div class="card"><h3>${esc(s.nom)}</h3>
         <p class="muted">${esc(s.consigne || '')}</p>
         ${s.note ? `<p class="muted">${esc(s.note)}</p>` : ''}
-        <button class="btn block" id="start">Commencer la séance</button>
+        ${hasVariantes(s) ? `<div class="row" style="gap:8px"><button class="btn" id="start" style="flex:1">Commencer en libre</button><button class="btn" id="start-vm" style="flex:1">Commencer sur machines</button></div>
+        <p class="muted" style="font-size:12px">Sur machines : chaque exercice qui a un équivalent sur machine guidée est remplacé (réversible exercice par exercice avec « ⇄ Remplacer »).</p>` : '<button class="btn block" id="start">Commencer la séance</button>'}
         <div class="row" style="margin-top:8px;flex-wrap:wrap">
           ${isCustom(s.id) ? `<a class="btn small ghost" href="#/editer/${s.id}">Modifier</a>` : ''}
           <button class="btn small ghost" id="dup">Dupliquer</button>
@@ -454,6 +497,7 @@
           ${isCustom(s.id) ? '<button class="btn small ghost" id="delprog">Supprimer</button>' : ''}
         </div></div>` + previewList(s);
       $('#start').onclick = () => { setCurrent(newSession(s)); viewSeance(id); };
+      if ($('#start-vm')) $('#start-vm').onclick = () => { const c = newSession(s); c.vm = true; s.exercices.forEach((ex) => { if (varOf(ex)) applyReplacement(s, c, ex.id, vmRep(ex)); }); setCurrent(c); viewSeance(id); };
       $('#dup').onclick = () => { const c = cloneSeance(s, s.nom + ' (copie)'); location.hash = '#/editer/' + c.id; };
       $('#share').onclick = () => shareSeance(s);
       $('#csv').onclick = () => exportCsv([s], s.nom);
@@ -471,7 +515,7 @@
     return s.exercices.map((ex) => {
       const m = machineFor(ex);
       return `<div class="card"><h3>${esc(ex.nom)}</h3><div class="muted">${ex.series} × ${esc(ex.reps)}${ex.par_cote ? ' par côté' : ''} · repos ${fmtTime(ex.repos_s)}</div>${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
-        <div class="machine"><div class="row">${thumb(m)}<span>Machine : <b>${esc(m.main)}</b></span></div></div></div>`;
+        <div class="machine"><div class="row">${thumb(m)}<span>Machine : <b>${esc(m.main)}</b></span></div>${varOf(ex) ? `<div class="alt">Sur machines : ${esc(varOf(ex).nom)}</div>` : ''}</div></div>`;
     }).join('');
   }
 
@@ -498,7 +542,7 @@
       const last = lastSetsFor(ex.id, ex.nom);
       const sets = cur.exercices[ex.id];
       html += `<div class="card" data-ex="${ex.id}">
-        <div class="row between"><h3>${esc(ex.nom)}</h3><span class="badge">${ex.series} × ${esc(ex.reps)}${ex.par_cote ? '/côté' : ''}</span></div>${ex.ajoute ? `<div class="muted">＋ Ajouté pour cette séance</div>` : ex.remplace ? `<div class="muted">↻ Remplace : ${esc(ex.de)}</div>` : ''}${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
+        <div class="row between"><h3>${esc(ex.nom)}</h3><span class="badge">${ex.series} × ${esc(ex.reps)}${ex.par_cote ? '/côté' : ''}</span></div>${ex.ajoute ? `<div class="muted">＋ Ajouté pour cette séance</div>` : ex.vm ? `<div class="muted">🏋 Sur machine${nameKey(ex.nom) !== nameKey(ex.de) ? ` · remplace : ${esc(ex.de)}` : ''}</div>` : ex.remplace ? `<div class="muted">↻ Remplace : ${esc(ex.de)}</div>` : ''}${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
         ${last ? `<div class="muted">Précédent (${fmtShort(last.date)}) : ${esc(last.sets.filter((x) => x.done).map((x) => fmtSet(x)).join(', '))}</div>` : ''}
         <div class="machine"><div class="row">${thumb(m)}<span>Machine : <b>${esc(m.main)}</b>${m.custom ? ' <span class="muted">(perso)</span>' : ''}</span>
           <button class="btn small ghost" data-edit-machine="${ex.id}" aria-label="Modifier le nom de la machine" title="Modifier le nom de la machine" style="padding:2px 8px">✎</button></div>
@@ -510,9 +554,9 @@
           <td><input inputmode="decimal" data-f="kg" value="${esc(st.kg)}" placeholder="kg"></td>
           <td>${timedSec(ex.reps) ? `<button class="work" aria-label="Lancer le chrono de la série">▶ ${fmtTime(num(st.reps) || timedSec(ex.reps))}</button>` : `<input inputmode="numeric" data-f="reps" value="${esc(st.reps)}">`}</td>
           <td><button class="check" aria-label="Série faite">✓</button></td>
-          <td><button class="rest" aria-label="Lancer le repos">${fmtTime(ex.repos_s)}</button></td></tr>`).join('')}
+          <td><button class="rest${st.rest_s != null ? ' real' : ''}" aria-label="Lancer le repos" title="${st.rest_s != null ? 'Repos réellement pris' : 'Repos prévu'}">${fmtTime(st.rest_s ?? ex.repos_s)}</button></td></tr>`).join('')}
         </tbody></table>
-        <div class="row" style="margin-top:6px"><button class="btn small ghost" data-add>+ Série</button><button class="btn small ghost" data-del>− Série</button></div>
+        <div class="row" style="margin-top:6px"><button class="btn small ghost" data-add>+ Série</button><button class="btn small ghost" data-del>− Série</button>${timedSec(ex.reps) ? '<button class="btn small ghost" data-dur>⏱ Durée</button>' : ''}</div>
       </div>`;
     });
 
@@ -566,22 +610,36 @@
             cur.exercices[exId].forEach((n, j) => { if (j > i && !n.done && n.kg === '' && st.kg !== '') n.kg = st.kg; });
             persist();
             card.querySelectorAll('tr[data-i]').forEach((t2) => { const j = +t2.dataset.i; t2.querySelector('[data-f=kg]').value = cur.exercices[exId][j].kg; });
-            startTimer(ex.repos_s, nextLabel(s, ex, i));
+            startRest();
           }
         };
+        // Repos : le bouton affiche ensuite le temps réellement pris (repos passé ou écourté).
+        const restBtn = tr.querySelector('.rest');
+        const startRest = () => startTimer(ex.repos_s, nextLabel(s, ex, i), { onStop: (el) => {
+          cur.exercices[exId][i].rest_s = el; persist(); restBtn.textContent = fmtTime(el); restBtn.classList.add('real');
+        } });
         tr.querySelector('.check').onclick = check;
-        tr.querySelector('.rest').onclick = () => startTimer(ex.repos_s, nextLabel(s, ex, i));
+        restBtn.onclick = startRest;
         // Série en durée : chrono de la série, puis série cochée et repos lancé automatiquement
         const work = tr.querySelector('.work');
         if (work) work.onclick = () => {
           const st = cur.exercices[exId][i];
           const sec = num(st.reps) || timedSec(ex.reps);
-          startTimer(sec, `repos ${fmtTime(ex.repos_s)}`, { label: `${ex.nom} · série ${i + 1}`, onDone: () => { st.reps = sec; st.sec = true; if (!st.done) check(); else closeTimer(); } });
+          startTimer(sec, `repos ${fmtTime(ex.repos_s)}`, { label: `${ex.nom} · série ${i + 1}`, onDone: (el) => { st.reps = el > 0 ? el : sec; st.sec = true; if (!st.done) check(); else closeTimer(); } });
         };
       });
       card.querySelector('[data-add]').onclick = () => {
         const sets = cur.exercices[exId]; const l = sets[sets.length - 1] || { kg: '', reps: repsMin(ex.reps) };
         sets.push({ kg: l.kg, reps: l.reps, done: false }); persist(); renderSession(base, cur);
+      };
+      // Exercice en durée : nouvelle durée pour les séries pas encore faites (ex. « 1 min », « 0:50 », « 50 s », « 50 »).
+      const dur = card.querySelector('[data-dur]');
+      if (dur) dur.onclick = async () => {
+        const v = await ask('Durée des séries restantes (ex. 45 s, 1 min, 1:30)', fmtTime(num((cur.exercices[exId].find((x) => !x.done) || {}).reps) || timedSec(ex.reps)));
+        if (v === null) return;
+        const sec = timedSec(v) || (/^\d+$/.test(v.trim()) ? +v.trim() : 0);
+        if (!sec) return alert('Durée non comprise : écris par exemple 45 s, 1 min ou 1:30.');
+        cur.exercices[exId].forEach((st) => { if (!st.done) st.reps = sec; }); persist(); renderSession(base, cur);
       };
       card.querySelector('[data-del]').onclick = () => {
         if (cur.exercices[exId].length > 1) { cur.exercices[exId].pop(); persist(); renderSession(base, cur); }
@@ -641,9 +699,10 @@
   }
   // Ajoute un exercice à la fin de la séance : 3 séries (réglables avec + / − Série), 90 s de repos (45 s en durée).
   function addExercise(cur, rep) {
+    if (cur.vm && !rep.vm && varOf(rep)) rep = vmRep(rep); // séance « sur machines » : équivalent machine d'office
     const id = 'x' + Date.now().toString(36);
     const timed = timedSec(rep.reps) > 0;
-    const ex = { id, nom: rep.nom, machine: rep.machine || '', img: rep.img || '', series: 3, reps: rep.reps || '10', repos_s: timed ? 45 : 90, par_cote: !!rep.par_cote, alternatives: [], note: '', remplace: true, ajoute: true };
+    const ex = { id, nom: rep.nom, machine: rep.machine || '', img: rep.img || '', series: 3, reps: rep.reps || '10', repos_s: timed ? 45 : 90, par_cote: !!rep.par_cote, alternatives: [], note: '', remplace: true, ajoute: true, vm: !!rep.vm };
     cur.ajouts = (cur.ajouts || []).concat(ex);
     cur.exNoms[id] = ex.nom; cur.exercices[id] = freshSets(ex);
   }
@@ -659,7 +718,7 @@
     if (sets.some((x) => x.done) && !confirm('Les séries déjà cochées de cet exercice seront perdues. Continuer ?')) return false;
     if (ex.ajoute) { // exercice ajouté : on le modifie directement
       ex.reps = timedSec(rep.reps) ? rep.reps : (timedSec(ex.reps) ? (rep.reps || '10') : ex.reps);
-      Object.assign(ex, { nom: rep.nom, machine: rep.machine || '', img: rep.img || '', par_cote: !!rep.par_cote });
+      Object.assign(ex, { nom: rep.nom, machine: rep.machine || '', img: rep.img || '', par_cote: !!rep.par_cote, vm: !!rep.vm });
       cur.exNoms[exId] = rep.nom; cur.exercices[exId] = freshSets(ex, sets.length);
       return true;
     }
@@ -671,7 +730,7 @@
     }
     // Séries et repos conservés ; reps conservées sauf passage répétitions ↔ durée.
     const reps = timedSec(rep.reps) ? rep.reps : (timedSec(ex.reps) ? (rep.reps || '10') : ex.reps);
-    cur.remplace[exId] = { nom: rep.nom, machine: rep.machine || '', img: rep.img || '', reps, par_cote: !!rep.par_cote, alternatives: [], note: '', remplace: true, de: ex.nom };
+    cur.remplace[exId] = { nom: rep.nom, machine: rep.machine || '', img: rep.img || '', reps, par_cote: !!rep.par_cote, alternatives: [], note: '', remplace: true, de: ex.nom, vm: !!rep.vm };
     cur.exNoms[exId] = rep.nom;
     cur.exercices[exId] = freshSets({ ...ex, ...cur.remplace[exId] }, sets.length);
     return true;
@@ -680,6 +739,8 @@
   function openReplace(base, ex, cur, done, mode) {
     const add = mode === 'add';
     const orig = ex && base.exercices.find((e) => e.id === ex.id);
+    // Exercice dont on propose la version machine : celui du programme, ou l'exercice ajouté lui-même.
+    const vmSrc = [orig, ex && ex.ajoute ? ex : null].find((e) => e && varOf(e));
     // exercices déjà présents dans la séance : pas proposés
     const cour = withRemplace(base, cur).exercices;
     const used = new Set(cour.map((e) => nameKey(e.nom)));
@@ -700,21 +761,22 @@
       <input class="field" id="rep-nom" placeholder="Nom de l'exercice">
       <input class="field" id="rep-mach" placeholder="Machine (facultatif)" style="margin-top:6px">
       <button class="btn block" id="rep-own" style="margin-top:8px">Utiliser cet exercice</button>
-      ${!add && ex.remplace && !ex.ajoute && orig ? `<p></p><button class="btn block ghost" id="rep-reset">Remettre « ${esc(orig.nom)} »</button>` : ''}</div>`;
+      ${!add && vmSrc && !ex.vm ? `<p></p><button class="btn block" id="rep-vm">🏋 Sur machine : ${esc(varOf(vmSrc).nom)}</button>` : ''}
+      ${!add && ex.remplace && !ex.ajoute && orig ? `<p></p><button class="btn block ghost" id="rep-reset">Remettre « ${esc(orig.nom)} »${ex.vm ? ' (libre)' : ''}</button>` : ''}</div>`;
     const dyn = o.querySelector('#rep-dyn');
     let query = '';
+    let kind = cur.vm ? 'machine' : 'tout'; // séance « sur machines » : machines d'abord
     const drawList = () => {
-      const g = REPL.groupes.find((x) => x.id === gid) || { exercices: [] };
       const q = nameKey(query);
-      const cat = (window.CATALOGUE || []).filter((c) => !q ? c[2] === gid : true).map((c) => ({ nom: c[1], machine: c[3], img: 'web:' + c[0] }));
-      const list = (q ? REPL.groupes.flatMap((x) => x.exercices).concat(cat) : g.exercices.concat(cat))
-        .filter((e) => !used.has(nameKey(e.nom)) && (!q || nameKey(e.nom + ' ' + (e.machine || '')).includes(q)));
+      const list = exList(gid, q, kind).filter((e) => !used.has(nameKey(e.nom)));
       dyn.innerHTML = `<input class="field" id="rep-q" type="search" placeholder="Rechercher (nom, machine…)" value="${esc(query)}" autocomplete="off">
+        ${kindChips(kind)}
         <div class="chips" style="${q ? 'opacity:.5' : ''}">${REPL.groupes.map((x) => `<button class="chip ${x.id === gid && !q ? 'on' : ''}" data-g="${x.id}">${esc(x.nom)}</button>`).join('')}</div>
         ${list.map((e, i) => `<button class="rep-item" data-i="${i}">${isImg(e.img) ? `<img class="thumb" src="${imgSrc(e.img, 0)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ''}<span><b>${esc(e.nom)}</b><br><span class="muted">${esc(e.machine || '')}</span></span></button>`).join('') || `<p class="muted">${q ? 'Aucun résultat : utilise « Autre exercice » plus bas.' : 'Rien d\'autre dans ce groupe.'}</p>`}`;
       const qi = dyn.querySelector('#rep-q');
       qi.oninput = () => { query = qi.value; const pos = qi.selectionStart; drawList(); const n = dyn.querySelector('#rep-q'); n.focus(); n.setSelectionRange(pos, pos); };
       dyn.querySelectorAll('[data-g]').forEach((b) => { b.onclick = () => { gid = b.dataset.g; query = ''; drawList(); }; });
+      dyn.querySelectorAll('[data-k]').forEach((b) => { b.onclick = () => { kind = b.dataset.k; drawList(); }; });
       dyn.querySelectorAll('[data-i]').forEach((b) => { b.onclick = () => choose(list[+b.dataset.i]); });
     };
     drawList();
@@ -726,6 +788,8 @@
       choose({ nom: nom.slice(0, 80), machine: o.querySelector('#rep-mach').value.trim().slice(0, 80), img: imgByName(nom) || '' });
     };
     o.querySelectorAll('[data-back]').forEach((b) => { b.onclick = () => { restoreExercise(base, cur, b.dataset.back); setCurrent(cur); close(); done(); }; });
+    const vmBtn = o.querySelector('#rep-vm');
+    if (vmBtn) vmBtn.onclick = () => choose(vmRep(vmSrc));
     const resetBtn = o.querySelector('#rep-reset');
     if (resetBtn) resetBtn.onclick = () => choose(null);
     document.body.appendChild(o);
@@ -1062,8 +1126,28 @@
           </div></div>`;
       });
     });
+    // Machines guidées (mode Machine) : une photo par nom de variante, commune à tous les programmes.
+    const vms = [...new Map(allSeances().flatMap((s) => s.exercices).map(varOf).filter(Boolean).map((v) => [vmKey(v.nom), v])).values()];
+    if (vms.length) html += `<h2>Sur machines guidées</h2>` + vms.map((v) => {
+      const m = { photo: getPhotos()[vmKey(v.nom)] || null, stock: v.img || null };
+      return `<div class="card" data-mv="${esc(vmKey(v.nom))}"><div class="row">
+          ${thumbHtml(m, 'thumb big') || '<div class="thumb big empty">📷</div>'}
+          <div style="flex:1;min-width:0"><b>${esc(v.nom)}</b><div class="muted">${esc(v.machine)}</div>
+          <div class="muted" style="font-size:12px">${m.photo ? 'Ta photo' : 'Image indicative'}</div></div></div>
+          <div class="row" style="margin-top:8px;flex-wrap:wrap">
+            <button class="btn small ghost" data-cam>📷 Prendre une photo</button>
+            <button class="btn small ghost" data-pic>${m.photo ? 'Changer (galerie)' : 'Choisir une image'}</button>
+            ${m.photo ? '<button class="btn small ghost" data-rm>Revenir à l\'image indicative</button>' : ''}
+          </div></div>`;
+    }).join('');
     view.innerHTML = html;
     bindThumbs(view);
+    view.querySelectorAll('[data-mv]').forEach((card) => {
+      const k = card.dataset.mv;
+      card.querySelector('[data-pic]').onclick = () => pickPhoto(k, viewMachines);
+      card.querySelector('[data-cam]').onclick = () => pickPhoto(k, viewMachines, true);
+      const rm = card.querySelector('[data-rm]'); if (rm) rm.onclick = () => removePhoto(k, viewMachines);
+    });
     view.querySelectorAll('[data-mx]').forEach((card) => {
       const ex = exById(card.dataset.mx);
       card.querySelector('[data-name]').onclick = () => editMachine(ex, viewMachines);
@@ -1112,17 +1196,47 @@
         alternatives: (e.alternatives || []).map((a) => String(machineName(a))).slice(0, 3),
         note: e.note ? String(e.note).slice(0, 200) : '',
         img: isImg(e.img) ? e.img : (STOCK.includes(e.id) ? e.id : imgByName(e.nom)),
+        variante: varianteOf(e.variante),
       })),
     };
   }
+  // Variante « machine guidée » d'un exercice : objet { nom, machine, img, par_cote? } ou simple nom (colonne Variante du tableau).
+  function varianteOf(v) {
+    const nom = String((v && typeof v === 'object' ? v.nom : v) || '').trim().slice(0, 80);
+    if (!nom) return undefined;
+    const o = typeof v === 'object' ? v : {}; const hit = catalogByName(nom) || {};
+    const r = { nom, machine: String(o.machine || hit.machine || nom).slice(0, 80), img: isImg(o.img) ? o.img : (hit.img || '') };
+    if (o.par_cote !== undefined) r.par_cote = !!o.par_cote; else if (hit.nom) r.par_cote = !!hit.par_cote;
+    return r;
+  }
+  // Variante de l'exercice ; à défaut, celle d'un exercice de même nom des séances intégrées ou de la bibliothèque
+  // (programmes du coach sans colonne Variante, exercices ajoutés, programmes perso d'avant cette version).
+  function varOf(ex) {
+    if (!ex) return undefined;
+    if (ex.variante) return ex.variante;
+    const k = nameKey(ex.nom);
+    if (!k) return undefined;
+    const withV = builtinEx().filter((e) => e.variante);
+    const same = (e) => nameKey(e.nom) === k || nameKey(enOf(e.img || e.id)) === k;
+    // Exercice libre connu, ou déjà sa version machine (même nom ou nom anglais), sinon tous les mots (au moins 2).
+    const hit = withV.find(same) || withV.find((e) => same(e.variante))
+      || (k.includes(' ') ? withV.find((e) => matchQ({ ...e, img: e.img || e.id }, k) || matchQ(e.variante, k)) : null);
+    return hit ? hit.variante : undefined;
+  }
+  const hasVariantes = (s) => s.exercices.some((e) => varOf(e));
+  // Exercice de remplacement « sur machine » ; sans précision, garde le « par côté » de l'exercice libre.
+  const vmRep = (ex) => { const v = varOf(ex); return { ...v, par_cote: v.par_cote ?? ex.par_cote, vm: true }; };
   // Exercice du catalogue retrouvé d'après son nom (exercices choisis puis catalogue complet) : image et machine par défaut.
   function catalogByName(nom) {
     const k = nameKey(nom);
     if (!k) return null;
-    const pool = DATA.seances.concat(window.LIBRARY || []).flatMap((s) => s.exercices.map((e) => ({ nom: e.nom, img: e.img || e.id, machine: e.machine })))
+    const pool = DATA.seances.concat(window.LIBRARY || []).flatMap((s) => s.exercices.flatMap((e) => [{ nom: e.nom, img: e.img || e.id, machine: e.machine, par_cote: e.par_cote }].concat(e.variante || [])))
       .concat(REPL.groupes.flatMap((g) => g.exercices))
       .concat((window.CATALOGUE || []).map((c) => ({ nom: c[1], img: 'web:' + c[0], machine: c[3] })));
-    return pool.find((e) => nameKey(e.nom) === k && isImg(e.img)) || null;
+    const ok = pool.filter((e) => isImg(e.img));
+    // Nom exact (français), sinon nom anglais exact, sinon tous les mots (au moins 2) dans nom / machine / anglais.
+    return ok.find((e) => nameKey(e.nom) === k) || ok.find((e) => nameKey(enOf(e.img)) === k)
+      || (k.includes(' ') ? ok.find((e) => matchQ(e, k)) : null) || null;
   }
   // Image indicative retrouvée d'après le nom (fiches, bibliothèque, catalogue).
   function imgByName(nom) {
@@ -1172,7 +1286,7 @@
   }
 
   // ---------- tableau CSV (Excel, LibreOffice, Google Sheets) ----------
-  const CSV_COLS = ['Client', 'Séance', 'Type', 'Exercice', 'Séries', 'Reps', 'Repos', 'Machine', 'Par côté', 'Note'];
+  const CSV_COLS = ['Client', 'Séance', 'Type', 'Exercice', 'Séries', 'Reps', 'Repos', 'Machine', 'Par côté', 'Note', 'Variante'];
   const fold = (v) => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
   const slug = (v) => fold(v).replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'x';
   function parseCsv(txt) {
@@ -1225,7 +1339,7 @@
       }
       else if (type.startsWith('finish') || type.startsWith('fin')) s.finisher = { exercice: ex, objectif: [get(r, 'Reps'), note].filter(Boolean).join(' · ') };
       else if (type.startsWith('consigne') || (!ex && note)) s.consigne = [s.consigne, note || ex].filter(Boolean).join(' ');
-      else if (ex) s.exercices.push({ nom: ex, series: get(r, 'Séries'), reps: get(r, 'Reps') || '10', repos_s: parseRest(get(r, 'Repos')) || 60, machine: get(r, 'Machine'), par_cote: yes(get(r, 'Par côté')), note });
+      else if (ex) s.exercices.push({ nom: ex, series: get(r, 'Séries'), reps: get(r, 'Reps') || '10', repos_s: parseRest(get(r, 'Repos')) || 60, machine: get(r, 'Machine'), par_cote: yes(get(r, 'Par côté')), note, variante: get(r, 'Variante') });
     });
     const list = [...map.values()].filter((s) => s.exercices.length);
     if (!list.length) throw new Error(opts.all ? 'Aucun exercice trouvé dans le tableau.' : 'Aucun programme pour ce code client.');
@@ -1239,7 +1353,7 @@
     list.forEach((s) => {
       if (s.consigne) out.push(['', s.nom, 'Consigne', '', '', '', '', '', '', s.consigne]);
       if (hasWarm(s)) out.push(['', s.nom, 'Échauffement', s.echauffement.exercice, '', s.echauffement.duree_min ? s.echauffement.duree_min + ' min' : '', fmtTime(warmRest(s)), '', '', s.echauffement.resistance || '']);
-      s.exercices.forEach((e) => out.push(['', s.nom, 'Exercice', e.nom, e.series, e.reps, fmtTime(e.repos_s || 0), machineFor(e).main, e.par_cote ? 'oui' : 'non', e.note || '']));
+      s.exercices.forEach((e) => out.push(['', s.nom, 'Exercice', e.nom, e.series, e.reps, fmtTime(e.repos_s || 0), machineFor(e).main, e.par_cote ? 'oui' : 'non', e.note || '', (e.variante || {}).nom || '']));
       if (hasFin(s)) out.push(['', s.nom, 'Finisher', s.finisher.exercice, '', '', '', '', '', s.finisher.objectif || '']);
     });
     return '﻿' + out.map((r) => r.map(csvCell).join(';')).join('\r\n') + '\r\n';
@@ -1348,7 +1462,7 @@
   let draft = null;
   // Sélecteur d'exercice (éditeur de programme) : groupes, recherche, catalogue complet, ou nom libre.
   function pickExercise(onPick, startGroup) {
-    let gid = startGroup || (REPL.groupes[0] || {}).id, query = '';
+    let gid = startGroup || (REPL.groupes[0] || {}).id, query = '', kind = 'tout';
     const o = document.createElement('div'); o.className = 'sheet-overlay';
     const close = () => o.remove();
     o.innerHTML = `<div class="sheet" role="dialog" aria-label="Choisir un exercice">
@@ -1361,17 +1475,16 @@
     const dyn = o.querySelector('#pk-dyn');
     const draw = () => {
       const q = nameKey(query);
-      const cat = (window.CATALOGUE || []).filter((c) => (q ? true : c[2] === gid)).map((c) => ({ nom: c[1], machine: c[3], img: 'web:' + c[0] }));
-      const g = REPL.groupes.find((x) => x.id === gid) || { exercices: [] };
-      const list = (q ? REPL.groupes.flatMap((x) => x.exercices).concat(cat) : g.exercices.concat(cat))
-        .filter((e) => !q || nameKey(e.nom + ' ' + (e.machine || '')).includes(q));
+      const list = exList(gid, q, kind);
       dyn.innerHTML = `<input class="field" id="pk-q" type="search" placeholder="Rechercher (nom, machine…)" value="${esc(query)}" autocomplete="off">
+        ${kindChips(kind)}
         <div class="chips" style="${q ? 'opacity:.5' : ''}">${REPL.groupes.map((x) => `<button class="chip ${x.id === gid && !q ? 'on' : ''}" data-g="${x.id}">${esc(x.nom)}</button>`).join('')}</div>
         ${list.map((e, i) => `<button class="rep-item" data-i="${i}">${isImg(e.img) ? `<img class="thumb" src="${imgSrc(e.img, 0)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ''}<span><b>${esc(e.nom)}</b><br><span class="muted">${esc(e.machine || '')}</span></span></button>`).join('')
         || '<p class="muted">Aucun résultat : utilise « Autre exercice » plus bas.</p>'}`;
       const qi = dyn.querySelector('#pk-q');
       qi.oninput = () => { query = qi.value; const pos = qi.selectionStart; draw(); const n = dyn.querySelector('#pk-q'); n.focus(); n.setSelectionRange(pos, pos); };
       dyn.querySelectorAll('[data-g]').forEach((b) => { b.onclick = () => { gid = b.dataset.g; query = ''; draw(); }; });
+      dyn.querySelectorAll('[data-k]').forEach((b) => { b.onclick = () => { kind = b.dataset.k; draw(); }; });
       dyn.querySelectorAll('[data-i]').forEach((b) => { b.onclick = () => { close(); onPick(list[+b.dataset.i]); }; });
     };
     draw();

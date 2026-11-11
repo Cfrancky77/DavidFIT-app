@@ -27,3 +27,9 @@ Un message « Liste … appliquée » s'affiche en bas à droite à chaque choix
 ## Liste déroulante pour la colonne « Séance » (A)
 
 Dans l'onglet **Listes**, colonne **Q** : « Séances » en Q1, puis Jambes, Dos / Biceps, Pecs / Triceps, Épaules / Abdos, Haut du corps, Bas du corps, Full body, Cardio (à compléter). Dans chaque onglet de programme : validation de **A2:A500** = *Menu déroulant (depuis une plage)* `Listes!Q2:Q50`, avec avertissement (un autre nom reste accepté). Le nom de séance doit rester identique sur toutes les lignes d'une même séance.
+
+## Colonne « Variante » (mode Libre / Machine)
+
+Colonne facultative **Variante**, n'importe où (l'appli lit les colonnes par leur nom) : le nom de l'exercice équivalent sur **machine guidée**, par exemple « Chest press » pour « Développé couché ». Si au moins un exercice d'une séance a une variante, l'appli propose « Commencer en libre » ou « Commencer sur machines » ; sur machines, chaque exercice qui a une variante est remplacé par celle-ci (séries, reps et repos conservés). Ligne sans variante = exercice inchangé dans les deux modes. Anciens tableaux sans cette colonne : rien ne change.
+
+L'image et la machine sont retrouvées d'après le nom (même liste que la colonne Exercice) : choisir de préférence un nom de la liste. Validation conseillée : *Menu déroulant (depuis une plage)* `Listes!B2:B900`, avec « Afficher un avertissement ».

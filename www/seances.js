@@ -23,7 +23,12 @@ window.SEANCES_DATA = {
           "machine": "squat_rack",
           "alternatives": [
             "smith_machine"
-          ]
+          ],
+          "variante": {
+            "nom": "Hack squat machine",
+            "machine": "Machine hack squat",
+            "img": "m_hack_squat"
+          }
         },
         {
           "id": "deadlift",
@@ -35,7 +40,12 @@ window.SEANCES_DATA = {
           "machine": "plateforme_barre",
           "alternatives": [
             "squat_rack"
-          ]
+          ],
+          "variante": {
+            "nom": "Soulevé de terre à la machine",
+            "machine": "Machine soulevé de terre (leverage)",
+            "img": "m_deadlift"
+          }
         },
         {
           "id": "hip_thrust",
@@ -61,7 +71,13 @@ window.SEANCES_DATA = {
           "machine": "banc_plat_halteres",
           "alternatives": [
             "smith_machine"
-          ]
+          ],
+          "variante": {
+            "nom": "Fente à la Smith machine",
+            "machine": "Smith machine",
+            "img": "m_split_squat",
+            "par_cote": true
+          }
         },
         {
           "id": "leg_extension",
@@ -103,7 +119,12 @@ window.SEANCES_DATA = {
           "alternatives": [
             "barre_traction",
             "traction_assistee"
-          ]
+          ],
+          "variante": {
+            "nom": "Tirage vertical machine",
+            "machine": "Machine tirage vertical (lat pulldown)",
+            "img": "m_lat_pulldown"
+          }
         },
         {
           "id": "rowing_ez",
@@ -115,7 +136,12 @@ window.SEANCES_DATA = {
           "machine": "barre_ez",
           "alternatives": [
             "rowing_assis_poulie"
-          ]
+          ],
+          "variante": {
+            "nom": "Rowing assis machine",
+            "machine": "Machine rowing assis (seated row)",
+            "img": "m_seated_row"
+          }
         },
         {
           "id": "retropulsion_corde",
@@ -137,7 +163,13 @@ window.SEANCES_DATA = {
           "machine": "banc_plat_halteres",
           "alternatives": [
             "poulie_vis_a_vis"
-          ]
+          ],
+          "variante": {
+            "nom": "Rowing assis machine un bras",
+            "machine": "Machine rowing assis (seated row)",
+            "img": "m_seated_row",
+            "par_cote": true
+          }
         },
         {
           "id": "curl_poulie_basse",
@@ -147,7 +179,12 @@ window.SEANCES_DATA = {
           "repos_s": 60,
           "charge": true,
           "machine": "poulie_vis_a_vis",
-          "alternatives": []
+          "alternatives": [],
+          "variante": {
+            "nom": "Curl biceps machine",
+            "machine": "Machine curl biceps",
+            "img": "m_curl"
+          }
         }
       ],
       "finisher": {
@@ -177,7 +214,12 @@ window.SEANCES_DATA = {
           "alternatives": [
             "smith_machine",
             "chest_press"
-          ]
+          ],
+          "variante": {
+            "nom": "Chest press",
+            "machine": "Machine chest press",
+            "img": "chest_press"
+          }
         },
         {
           "id": "dev_incline_halteres",
@@ -189,7 +231,12 @@ window.SEANCES_DATA = {
           "machine": "banc_inclinable_halteres",
           "alternatives": [
             "incline_press_machine"
-          ]
+          ],
+          "variante": {
+            "nom": "Développé incliné machine",
+            "machine": "Machine développé incliné",
+            "img": "m_incline_press"
+          }
         },
         {
           "id": "dev_militaire",
@@ -202,7 +249,12 @@ window.SEANCES_DATA = {
           "alternatives": [
             "shoulder_press",
             "smith_machine"
-          ]
+          ],
+          "variante": {
+            "nom": "Développé épaules machine",
+            "machine": "Machine shoulder press",
+            "img": "m_shoulder_press"
+          }
         },
         {
           "id": "ecarte_vis_a_vis",
@@ -214,7 +266,12 @@ window.SEANCES_DATA = {
           "machine": "poulie_vis_a_vis",
           "alternatives": [
             "pec_deck"
-          ]
+          ],
+          "variante": {
+            "nom": "Pec deck (butterfly)",
+            "machine": "Machine pec deck",
+            "img": "pec_deck"
+          }
         },
         {
           "id": "extension_triceps",
@@ -224,7 +281,12 @@ window.SEANCES_DATA = {
           "repos_s": 60,
           "charge": true,
           "machine": "poulie_vis_a_vis",
-          "alternatives": []
+          "alternatives": [],
+          "variante": {
+            "nom": "Extension triceps machine",
+            "machine": "Machine extension triceps",
+            "img": "m_triceps_ext"
+          }
         }
       ],
       "finisher": {
