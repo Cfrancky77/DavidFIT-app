@@ -45,3 +45,21 @@ Type **Finisher** : sans *Séries*, c'est une simple case à cocher (texte dans 
 ## Répétitions dans un temps donné (« 15 en 1 min »)
 
 Dans *Reps*, écrire **15 en 1 min** (ou « 12 en 45 s », « 10 en 1:30 ») : l'appli compte 15 répétitions à faire dans cette durée. Chaque série a un bouton ⏱ qui lance le minuteur de la série : à la fin (ou avec « Passer ») la série est cochée, et il n'y a pas de repos en plus, le repos est le temps restant. Marche pour un Exercice comme pour un Finisher avec *Séries*. Exemple : `;Pecs / Triceps;Finisher;Pompes;10;15 en 1 min;;;non;Pompes, répéter 10 fois.`
+
+Pour une ligne avec « en … » (ex. `15 en 1 min`), *Séries* = nombre de **tours** : l'appli affiche « 10 tours · 15 en 1:00 », chaque tour a son bouton ⏱, et le temps réellement mis s'affiche ensuite (✓ 0:48) et est gardé dans l'historique.
+
+## Circuit (plusieurs exercices enchaînés à chaque tour)
+
+Une ligne **Circuit**, puis une ligne **Tour** par exercice du tour (dans l'ordre) :
+
+| Type | Exercice | Séries | Reps | Repos | Note |
+|---|---|---|---|---|---|
+| Circuit | Finisher pompes + squats | 10 | 1 min | | Le plus vite possible dans la minute |
+| Tour | Pompes | | 15 | | |
+| Tour | Squat au poids du corps | | 20 | | |
+
+- Sur la ligne *Circuit* : *Exercice* = nom du circuit, *Séries* = nombre de **tours**, *Reps* = temps maximum par tour (facultatif : « 1 min », « 45 s »), *Repos* = repos entre les tours (facultatif, sans objet si un temps par tour est donné : le repos est alors le temps restant).
+- Sur les lignes *Tour* : *Exercice* = nom, *Reps* = ce qu'il faut faire à chaque tour (« 15 », « 30 s »), *Machine* facultative. Les lignes *Tour* se rattachent au dernier *Circuit* au-dessus.
+- Dans l'appli : une carte « Circuit » avec la liste du tour et une ligne par tour. Avec un temps par tour, chaque tour a son minuteur ⏱ (bips de fin) : le tour est coché à la fin ou avec « Passer » et le temps réellement mis s'affiche (✓ 0:48). Sans temps, on coche le tour, puis le repos éventuel démarre. + Tour / − Tour ajustent le nombre de tours en séance.
+- Un *Circuit* sans ligne *Tour* est ignoré. Ligne *Circuit* placée où tu veux dans la séance (avant les étirements, après ton dernier exercice pour un finisher).
+- Les charges ne sont pas suivies dans un circuit (une case par tour seulement).
