@@ -37,3 +37,11 @@ L'image et la machine sont retrouvées d'après le nom (même liste que la colon
 ## Lignes « Étirement » (retour au calme)
 
 Type **Étirement** : une ligne par étirement, nom dans *Exercice*, durée dans *Reps* (« 30 s », « 45 s », « 1 min » ; 30 s par défaut), *Par côté* = oui si chaque côté. S'il n'y en a aucune, l'appli propose d'elle-même 4 étirements selon les groupes musculaires travaillés (liste `ETIREMENTS` dans `www/remplacements.js`, photos Free Exercise DB). Un nom identique à un étirement de cette liste reprend sa photo.
+
+## Ligne « Finisher » avec des séries
+
+Type **Finisher** : sans *Séries*, c'est une simple case à cocher (texte dans *Note*, ou *Reps*). Avec *Séries* rempli (ex. 10 séries, Reps « 15 » ou « 15 en 1 min », Repos « 0:30 »), c'est un exercice normal avec une case par série et un repos, affiché en dernier avec le badge Finisher, juste avant le retour au calme.
+
+## Répétitions dans un temps donné (« 15 en 1 min »)
+
+Dans *Reps*, écrire **15 en 1 min** (ou « 12 en 45 s », « 10 en 1:30 ») : l'appli compte 15 répétitions à faire dans cette durée. Chaque série a un bouton ⏱ qui lance le minuteur de la série : à la fin (ou avec « Passer ») la série est cochée, et il n'y a pas de repos en plus, le repos est le temps restant. Marche pour un Exercice comme pour un Finisher avec *Séries*. Exemple : `;Pecs / Triceps;Finisher;Pompes;10;15 en 1 min;;;non;Pompes, répéter 10 fois.`

@@ -140,7 +140,7 @@
   }
   const kindChips = (kind) => `<div class="chips">${[['tout', 'Tout'], ['libre', 'Libre'], ['machine', '🏋 Machine']].map(([k, n]) => `<button class="chip ${k === kind ? 'on' : ''}" data-k="${k}">${n}</button>`).join('')}</div>`;
   const stockKey = (name) => { const k = String(name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return STOCK.includes(k) ? k : null; };
-  function showPhoto(src, stock) {
+  function showPhoto(src, stock, onChoose) {
     const o = document.createElement('div');
     o.className = 'photo-overlay';
     const close = () => { o.remove(); document.removeEventListener('keydown', onKey); };
@@ -148,8 +148,10 @@
     o.innerHTML = `<button class="photo-close" aria-label="Fermer l'image">✕ Fermer</button><div class="stock-pair">${stock
       ? `<div class="stock-anim"><img src="${imgSrc(stock, 0)}" alt="Départ"><img class="b" src="${imgSrc(stock, 1)}" alt="Arrivée"></div><p class="photo-hint">Mouvement : départ ↔ arrivée · image indicative</p>`
       : `<img src="${src}" alt="Photo de la machine">`}
-      <p class="photo-hint">Touche l'écran ou « Fermer » pour revenir</p></div>`;
+      <p class="photo-hint">Touche l'écran ou « Fermer » pour revenir</p>${onChoose ? '<button class="btn photo-choose">✓ Choisir cet exercice</button>' : ''}</div>`;
     o.onclick = close;
+    const ch = o.querySelector('.photo-choose');
+    if (ch) ch.onclick = (e) => { e.stopPropagation(); close(); onChoose(); };
     document.addEventListener('keydown', onKey);
     document.body.appendChild(o);
   }
@@ -157,6 +159,13 @@
     ? `<img class="${cls}" src="${m.photo}" alt="Machine" data-photo>`
     : (m.stock && isImg(m.stock) ? `<img class="${cls}" src="${imgSrc(m.stock, 0)}" alt="Exercice" data-photo data-stock="${m.stock}" loading="lazy" onerror="this.style.display='none'">` : '');
   const thumb = (m) => thumbHtml(m);
+  // Liste d'exercices (remplacer / ajouter / éditeur) : toucher l'image ou le nom consulte le mouvement,
+  // seul le bouton « Choisir » valide.
+  const exRows = (list) => list.map((e, i) => `<div class="rep-item" data-v="${i}">${isImg(e.img) ? `<img class="thumb" src="${imgSrc(e.img, 0)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ''}<span class="rep-txt"><b>${esc(e.nom)}</b><br><span class="muted">${esc(e.machine || '')}</span></span><button class="btn small" data-i="${i}">Choisir</button></div>`).join('');
+  function bindExRows(dyn, list, pick) {
+    dyn.querySelectorAll('[data-i]').forEach((b) => { b.onclick = (ev) => { ev.stopPropagation(); pick(list[+b.dataset.i]); }; });
+    dyn.querySelectorAll('[data-v]').forEach((r) => { r.onclick = () => { const e = list[+r.dataset.v]; showPhoto(null, isImg(e.img) ? e.img : null, () => pick(e)); }; });
+  }
   function bindThumbs(root) {
     root.querySelectorAll('img[data-photo]').forEach((im) => { im.onclick = (e) => { e.preventDefault(); showPhoto(im.src, im.dataset.stock); }; });
   }
@@ -233,11 +242,26 @@
     } catch (e) { /* ignore */ }
   }
 
+  // Bip court (sans vibration) pour le décompte des dernières secondes de repos. Contexte audio réutilisé.
+  let beepCtx = null;
+  function tick() {
+    try {
+      beepCtx = beepCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (beepCtx.state === 'suspended') beepCtx.resume();
+      const o = beepCtx.createOscillator(); const g = beepCtx.createGain(); const t = beepCtx.currentTime;
+      o.frequency.value = 1000; o.connect(g); g.connect(beepCtx.destination);
+      g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      o.start(t); o.stop(t + 0.13);
+    } catch (e) { /* ignore */ }
+  }
+  // Nombre de secondes finales avec un bip par seconde (0 = désactivé). Réglage : tr_bip.
+  const beepSecs = () => { const n = parseInt(load('tr_bip', 5), 10); return n > 0 ? Math.min(n, 30) : 0; };
+
   // ---------- minuteur de repos (popup) ----------
   // opts.label : titre (« Repos » par défaut) ; opts.onDone : appelé à la fin au lieu du « Go ! »
   // (sert à enchaîner échauffement → récupération). Au-delà d'une minute, affichage m:ss.
   // opts.onStop(secondes faites) : appelé quand le minuteur s'arrête (fin, « Passer » ou autre minuteur lancé).
-  const timer = { end: 0, tick: null, paused: 0, onDone: null, onStop: null, total: 0, long: false };
+  const timer = { end: 0, tick: null, paused: 0, onDone: null, onStop: null, total: 0, long: false, beep: false, lastBeep: 0 };
   // Temps réellement écoulé (pauses exclues, ±15 s pris en compte).
   const timerElapsed = () => Math.max(0, Math.round(timer.total - Math.max(0, (timer.paused || (timer.end - Date.now())) / 1000)));
   function stopTimerCb(sec) { const f = timer.onStop; timer.onStop = null; if (f) f(sec); }
@@ -255,6 +279,7 @@
     if (!$('#timer').hidden) stopTimerCb(timerElapsed());
     timer.end = Date.now() + seconds * 1000; timer.total = seconds;
     timer.paused = 0; timer.onDone = opts.onDone || null; timer.onStop = opts.onStop || null; timer.long = seconds >= 60;
+    timer.beep = !!opts.beep; timer.lastBeep = 0;
     keepAwake(true);
     $('#timer-label').textContent = opts.label || 'Repos';
     $('#timer-unit').textContent = timer.long ? 'minutes' : 'secondes';
@@ -262,11 +287,12 @@
     $('#timer-pause').textContent = 'Pause';
     $('#timer').hidden = false;
     $('#timer').classList.remove('finished', 'paused');
+    setMini(miniPref());
     clearInterval(timer.tick);
     timer.tick = setInterval(updateTimer, 250);
     updateTimer();
   }
-  function closeTimer() { clearInterval(timer.tick); timer.onDone = null; timer.onStop = null; $('#timer').hidden = true; keepAwake(false); }
+  function closeTimer() { clearInterval(timer.tick); timer.onDone = null; timer.onStop = null; $('#timer').hidden = true; document.body.classList.remove('timer-mini'); keepAwake(false); }
   function updateTimer() {
     if (timer.paused) return;
     const left = Math.ceil((timer.end - Date.now()) / 1000);
@@ -282,6 +308,8 @@
       return;
     }
     $('#timer-value').textContent = timer.long ? fmtTime(left) : left;
+    const nb = beepSecs();
+    if (timer.beep && nb && left <= nb && left !== timer.lastBeep) { timer.lastBeep = left; tick(); }
   }
   function shiftTimer(delta) {
     if ($('#timer').classList.contains('finished')) { if (delta > 0) startTimer(delta, null); return; }
@@ -303,6 +331,13 @@
   $('#timer-plus').onclick = () => shiftTimer(15);
   $('#timer-minus').onclick = () => shiftTimer(-15);
   $('#timer-pause').onclick = togglePause;
+  // Minuteur réduit ou plein écran : choix mémorisé pour les repos suivants.
+  const setMini = (on) => {
+    $('#timer').classList.toggle('mini', on); document.body.classList.toggle('timer-mini', on && !$('#timer').hidden);
+    $('#timer-mini').textContent = on ? '▴' : '▾'; $('#timer-mini').setAttribute('aria-label', on ? 'Agrandir le minuteur' : 'Réduire le minuteur');
+  };
+  const miniPref = () => { try { return localStorage.getItem('tr_timer_mini') === '1'; } catch (e) { return false; } };
+  $('#timer-mini').onclick = () => { const on = !$('#timer').classList.contains('mini'); try { localStorage.setItem('tr_timer_mini', on ? '1' : '0'); } catch (e) { /* ignore */ } setMini(on); };
   $('#timer-skip').onclick = () => {
     // « Passer » pendant l'échauffement saute directement à la récupération
     // Temps réellement fait transmis (repos ou série en durée arrêtés avant la fin).
@@ -516,7 +551,7 @@
     const et = stretchesFor(s);
     return s.exercices.map((ex) => {
       const m = machineFor(ex);
-      return `<div class="card"><h3>${esc(ex.nom)}</h3><div class="muted">${ex.series} × ${esc(ex.reps)}${ex.par_cote ? ' par côté' : ''} · repos ${fmtTime(ex.repos_s)}</div>${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
+      return `<div class="card"><h3>${esc(ex.nom)}${ex.fin ? ' <span class="badge">Finisher</span>' : ''}</h3><div class="muted">${ex.series} × ${esc(ex.reps)}${ex.fenetre_s ? ' en ' + fmtTime(ex.fenetre_s) : ''}${ex.par_cote ? ' par côté' : ''}${ex.fenetre_s ? '' : ' · repos ' + fmtTime(ex.repos_s)}</div>${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
         <div class="machine"><div class="row">${thumb(m)}<span>Machine : <b>${esc(m.main)}</b></span></div>${varOf(ex) ? `<div class="alt">Sur machines : ${esc(varOf(ex).nom)}</div>` : ''}</div></div>`;
     }).join('') + (et.length ? `<div class="card"><h3>Retour au calme</h3><div class="muted">${et.map((e) => esc(e.nom)).join(' · ')}</div></div>` : '');
   }
@@ -525,8 +560,10 @@
   // et ajoutés (cur.ajouts) appliqués. Le programme lui-même n'est jamais modifié. Toujours appelé avec le programme d'origine.
   const withRemplace = (base, cur) => {
     const rem = (cur && cur.remplace) || {}; const ret = new Set((cur && cur.retires) || []); const aj = (cur && cur.ajouts) || [];
-    if (!Object.keys(rem).length && !ret.size && !aj.length) return base;
-    return { ...base, exercices: base.exercices.filter((e) => !ret.has(e.id)).map((e) => (rem[e.id] ? { ...e, ...rem[e.id] } : e)).concat(aj) };
+    const rp = (cur && cur.repos) || {}; // repos modifié pendant la séance (bouton « Repos »)
+    if (!Object.keys(rem).length && !ret.size && !aj.length && !Object.keys(rp).length) return base;
+    return { ...base, exercices: base.exercices.filter((e) => !ret.has(e.id)).map((e) => (rem[e.id] ? { ...e, ...rem[e.id] } : e)).concat(aj)
+      .map((e) => (rp[e.id] != null ? { ...e, repos_s: rp[e.id] } : e)) };
   };
 
   let elapsedTick = null;
@@ -548,7 +585,7 @@
       const last = lastSetsFor(ex.id, ex.nom);
       const sets = cur.exercices[ex.id];
       html += `<div class="card" data-ex="${ex.id}">
-        <div class="row between"><h3>${esc(ex.nom)}</h3><span class="badge">${ex.series} × ${esc(ex.reps)}${ex.par_cote ? '/côté' : ''}</span></div>${ex.ajoute ? `<div class="muted">＋ Ajouté pour cette séance</div>` : ex.vm ? `<div class="muted">🏋 Sur machine${nameKey(ex.nom) !== nameKey(ex.de) ? ` · remplace : ${esc(ex.de)}` : ''}</div>` : ex.remplace ? `<div class="muted">↻ Remplace : ${esc(ex.de)}</div>` : ''}${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
+        <div class="row between"><h3>${esc(ex.nom)}</h3><span class="badge">${ex.series} × ${esc(ex.reps)}${ex.fenetre_s ? ' en ' + fmtTime(ex.fenetre_s) : ''}${ex.par_cote ? '/côté' : ''}</span></div>${ex.fin ? `<div class="muted">🔥 Finisher</div>` : ''}${ex.ajoute ? `<div class="muted">＋ Ajouté pour cette séance</div>` : ex.vm ? `<div class="muted">🏋 Sur machine${nameKey(ex.nom) !== nameKey(ex.de) ? ` · remplace : ${esc(ex.de)}` : ''}</div>` : ex.remplace ? `<div class="muted">↻ Remplace : ${esc(ex.de)}</div>` : ''}${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
         ${last ? `<div class="muted">Précédent (${fmtShort(last.date)}) : ${esc(last.sets.filter((x) => x.done).map((x) => fmtSet(x)).join(', '))}</div>` : ''}
         <div class="machine"><div class="row">${thumb(m)}<span>Machine : <b>${esc(m.main)}</b>${m.custom ? ' <span class="muted">(perso)</span>' : ''}</span>
           <button class="btn small ghost" data-edit-machine="${ex.id}" aria-label="Modifier le nom de la machine" title="Modifier le nom de la machine" style="padding:2px 8px">✎</button></div>
@@ -560,21 +597,22 @@
           <td><input inputmode="decimal" data-f="kg" value="${esc(st.kg)}" placeholder="kg"></td>
           <td>${timedSec(ex.reps) ? `<button class="work" aria-label="Lancer le chrono de la série">▶ ${fmtTime(num(st.reps) || timedSec(ex.reps))}</button>` : `<input inputmode="numeric" data-f="reps" value="${esc(st.reps)}">`}</td>
           <td><button class="check" aria-label="Série faite">✓</button></td>
-          <td><button class="rest${st.rest_s != null ? ' real' : ''}" aria-label="Lancer le repos" title="${st.rest_s != null ? 'Repos réellement pris' : 'Repos prévu'}">${fmtTime(st.rest_s ?? ex.repos_s)}</button></td></tr>`).join('')}
+          ${ex.fenetre_s ? `<td><button class="rest win" aria-label="Lancer le minuteur de la série" title="${esc(ex.reps)} répétitions en ${fmtTime(ex.fenetre_s)}">⏱ ${fmtTime(ex.fenetre_s)}</button></td></tr>` : `<td><button class="rest${st.rest_s != null ? ' real' : ''}" aria-label="Lancer le repos" title="${st.rest_s != null ? 'Repos réellement pris' : 'Repos prévu'}">${fmtTime(st.rest_s ?? ex.repos_s)}</button></td></tr>`}`).join('')}
         </tbody></table>
-        <div class="row" style="margin-top:6px"><button class="btn small ghost" data-add>+ Série</button><button class="btn small ghost" data-del>− Série</button>${timedSec(ex.reps) ? '<button class="btn small ghost" data-dur>⏱ Durée</button>' : ''}</div>
+        <div class="row" style="margin-top:6px"><button class="btn small ghost" data-add>+ Série</button><button class="btn small ghost" data-del>− Série</button>${timedSec(ex.reps) ? '<button class="btn small ghost" data-dur>⏱ Durée</button>' : ''}<button class="btn small ghost" data-repos>Repos ${fmtTime(ex.repos_s)}</button></div>
       </div>`;
     });
 
     html += `<button class="btn block ghost" id="add-ex">+ Ajouter un exercice</button><p></p>`;
+    if (hasFin(s)) html += `<div class="card"><label class="row"><input type="checkbox" id="fin" ${cur.finisher ? 'checked' : ''}>
+      <span><b>Finisher</b> : ${esc(s.finisher.exercice)}<div class="muted">${esc(s.finisher.objectif || '')}</div>
+      <div class="row" style="margin-top:6px">${thumbHtml({ stock: stockKey(s.finisher.exercice) })}</div></span></label></div>`;
     const etirs = stretchesFor(s); const faits = new Set(cur.etirFaits || []);
     if (etirs.length) html += `<div class="card"><h3>Retour au calme</h3><p class="muted" style="margin-top:0">Étirements doux, sans à-coups${(s.etirements || []).length ? '' : ' (choisis selon les muscles travaillés)'}.</p>
       ${etirs.map((e, i) => `<div class="row" style="gap:8px;margin:8px 0"><input type="checkbox" data-etir="${i}" ${faits.has(e.nom) ? 'checked' : ''} aria-label="Étirement fait">
         ${thumbHtml({ stock: e.img })}<span style="flex:1;min-width:0">${esc(e.nom)}<div class="muted">${e.duree_s} s${e.par_cote ? ' par côté' : ''}</div></span>
         <button class="btn small" data-etir-go="${i}">▶</button></div>`).join('')}</div>`;
-    html += `<div class="card">${hasFin(s) ? `<label class="row"><input type="checkbox" id="fin" ${cur.finisher ? 'checked' : ''}>
-      <span><b>Finisher</b> : ${esc(s.finisher.exercice)}<div class="muted">${esc(s.finisher.objectif || '')}</div>
-      <div class="row" style="margin-top:6px">${thumbHtml({ stock: stockKey(s.finisher.exercice) })}</div></span></label>` : ''}
+    html += `<div class="card">
       <h2>Notes</h2><textarea id="note" placeholder="Ressenti, watts atteints, temps…">${esc(cur.note)}</textarea></div>
       <button class="btn block" id="finish">Terminer et enregistrer</button>
       <p></p><button class="btn block ghost" id="abandon">Abandonner la séance</button>`;
@@ -594,7 +632,7 @@
     // Chrono d'échauffement puis récupération, enchaînés ; l'échauffement est coché à la fin.
     const firstEx = s.exercices[0] ? s.exercices[0].nom : null;
     const warmRestTimer = () => {
-      if (warmRest(s)) startTimer(warmRest(s), firstEx, { label: 'Récupération' }); else closeTimer();
+      if (warmRest(s)) startTimer(warmRest(s), firstEx, { label: 'Récupération', beep: true }); else closeTimer();
     };
     const warmDone = () => {
       cur.echauffement = true; persist(); if ($('#warm')) $('#warm').checked = true;
@@ -631,16 +669,19 @@
             cur.exercices[exId].forEach((n, j) => { if (j > i && !n.done && n.kg === '' && st.kg !== '') n.kg = st.kg; });
             persist();
             card.querySelectorAll('tr[data-i]').forEach((t2) => { const j = +t2.dataset.i; t2.querySelector('[data-f=kg]').value = cur.exercices[exId][j].kg; });
-            startRest();
+            if (!ex.fenetre_s) startRest(); // « 15 en 1 min » : le repos est le temps restant de la minute
           }
         };
         // Repos : le bouton affiche ensuite le temps réellement pris (repos passé ou écourté).
         const restBtn = tr.querySelector('.rest');
-        const startRest = () => startTimer(ex.repos_s, nextLabel(s, ex, i), { onStop: (el) => {
+        // « 15 en 1 min » : le minuteur d'une minute coche la série à sa fin (ou avec « Passer »).
+        if (ex.fenetre_s && restBtn.classList.contains('win')) { restBtn.onclick = () => startTimer(ex.fenetre_s, i + 1 < cur.exercices[exId].length ? `série ${i + 2}/${cur.exercices[exId].length}` : 'Fin de l\'exercice',
+          { label: `${ex.nom} · ${ex.reps} reps · série ${i + 1}`, beep: true, onDone: () => { if (!cur.exercices[exId][i].done) check(); closeTimer(); } }); }
+        const startRest = () => startTimer(ex.repos_s, nextLabel(s, ex, i), { beep: true, onStop: (el) => {
           cur.exercices[exId][i].rest_s = el; persist(); restBtn.textContent = fmtTime(el); restBtn.classList.add('real');
         } });
         tr.querySelector('.check').onclick = check;
-        restBtn.onclick = startRest;
+        if (!ex.fenetre_s) restBtn.onclick = startRest;
         // Série en durée : chrono de la série, puis série cochée et repos lancé automatiquement
         const work = tr.querySelector('.work');
         if (work) work.onclick = () => {
@@ -661,6 +702,14 @@
         const sec = timedSec(v) || (/^\d+$/.test(v.trim()) ? +v.trim() : 0);
         if (!sec) return alert('Durée non comprise : écris par exemple 45 s, 1 min ou 1:30.');
         cur.exercices[exId].forEach((st) => { if (!st.done) st.reps = sec; }); persist(); renderSession(base, cur);
+      };
+      // Repos de cet exercice pour la suite de la séance, à régler avant de cocher la série (le programme n'est pas modifié).
+      card.querySelector('[data-repos]').onclick = async () => {
+        const v = await ask('Repos entre les séries (ex. 90, 1:30, 2 min)', fmtTime(ex.repos_s));
+        if (v === null) return;
+        const sec = timedSec(v) || (/^\d+$/.test(v.trim()) ? +v.trim() : 0);
+        if (!sec) return alert('Durée non comprise : écris par exemple 90, 1:30 ou 2 min.');
+        cur.repos = { ...(cur.repos || {}), [exId]: sec }; persist(); renderSession(base, cur);
       };
       card.querySelector('[data-del]').onclick = () => {
         if (cur.exercices[exId].length > 1) { cur.exercices[exId].pop(); persist(); renderSession(base, cur); }
@@ -688,8 +737,27 @@
       const h = getHistory(); h.push(cur); setHistory(h); setCurrent(null);
       queueShare(cur);
       location.hash = '#/historique/' + cur.id;
+      showCongrats(cur);
     };
     $('#abandon').onclick = () => { if (confirm('Abandonner la séance ? Les saisies seront perdues.')) { setCurrent(null); location.hash = '#/'; } };
+  }
+
+  // Fenêtre de félicitations à l'enregistrement : durée de la séance, séries faites, kilos soulevés (kg × reps, séries en durée exclues).
+  function showCongrats(x) {
+    const sets = Object.values(x.exercices || {}).flat().filter((st) => st.done);
+    const kg = Math.round(sets.filter((st) => !st.sec).reduce((a, st) => a + (num(st.kg) || 0) * (num(st.reps) || 0), 0));
+    const prenom = load('tr_prenom', '');
+    const o = document.createElement('div'); o.className = 'congrats-overlay';
+    o.innerHTML = `<div class="congrats" role="dialog" aria-label="Séance terminée">
+      <div class="congrats-emoji"><svg class="congrats-fig" viewBox="0 0 120 120" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M60 52v32M60 84 44 110M60 84l16 26M60 60 34 30M60 60l26-30"/><path class="spark" stroke-width="4" d="M16 16l7 7M104 16l-7 7M60 4v9M10 44h9M101 44h9"/></g><circle cx="60" cy="36" r="13" fill="currentColor"/></svg></div><h2>Bravo${prenom ? ' ' + esc(prenom) : ''} !</h2><p class="muted" style="margin:0 0 12px">Séance terminée et enregistrée.</p>
+      <div class="congrats-stats"><div><b>${fmtDuree(new Date(x.fin) - new Date(x.date))}</b><span>durée</span></div>
+      <div><b>${sets.length}</b><span>série${sets.length > 1 ? 's' : ''}</span></div>
+      ${kg ? `<div><b>${kg.toLocaleString('fr-FR')} kg</b><span>soulevés</span></div>` : ''}</div>
+      <button class="btn block" id="congrats-ok">Voir le détail</button></div>`;
+    const close = () => o.remove();
+    o.onclick = (e) => { if (e.target === o) close(); };
+    document.body.appendChild(o);
+    o.querySelector('#congrats-ok').onclick = close;
   }
 
   // libellé de ce qui suit la série i de l'exercice ex
@@ -806,12 +874,12 @@
       dyn.innerHTML = `<input class="field" id="rep-q" type="search" placeholder="Rechercher (nom, machine…)" value="${esc(query)}" autocomplete="off">
         ${kindChips(kind)}
         <div class="chips" style="${q ? 'opacity:.5' : ''}">${REPL.groupes.map((x) => `<button class="chip ${x.id === gid && !q ? 'on' : ''}" data-g="${x.id}">${esc(x.nom)}</button>`).join('')}</div>
-        ${list.map((e, i) => `<button class="rep-item" data-i="${i}">${isImg(e.img) ? `<img class="thumb" src="${imgSrc(e.img, 0)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ''}<span><b>${esc(e.nom)}</b><br><span class="muted">${esc(e.machine || '')}</span></span></button>`).join('') || `<p class="muted">${q ? 'Aucun résultat : utilise « Autre exercice » plus bas.' : 'Rien d\'autre dans ce groupe.'}</p>`}`;
+        ${exRows(list) || `<p class="muted">${q ? 'Aucun résultat : utilise « Autre exercice » plus bas.' : 'Rien d\'autre dans ce groupe.'}</p>`}`;
       const qi = dyn.querySelector('#rep-q');
       qi.oninput = () => { query = qi.value; const pos = qi.selectionStart; drawList(); const n = dyn.querySelector('#rep-q'); n.focus(); n.setSelectionRange(pos, pos); };
       dyn.querySelectorAll('[data-g]').forEach((b) => { b.onclick = () => { gid = b.dataset.g; query = ''; drawList(); }; });
       dyn.querySelectorAll('[data-k]').forEach((b) => { b.onclick = () => { kind = b.dataset.k; drawList(); }; });
-      dyn.querySelectorAll('[data-i]').forEach((b) => { b.onclick = () => choose(list[+b.dataset.i]); });
+      bindExRows(dyn, list, choose);
     };
     drawList();
     o.querySelector('[data-close]').onclick = close;
@@ -1035,6 +1103,9 @@
       <div class="card"><h3>Apparence</h3><div class="seg" id="theme">
       ${[['system', 'Système'], ['light', 'Clair'], ['dark', 'Sombre']].map(([k, l]) => `<button data-t="${k}" class="${theme === k ? 'on' : ''}">${l}</button>`).join('')}
       </div></div>
+      <div class="card"><h3>Minuteur de repos</h3>
+      <label class="lbl" for="bip">Bip chaque seconde pendant les dernières secondes du repos (0 = aucun)</label>
+      <div class="row" style="gap:8px"><input class="field" id="bip" inputmode="numeric" maxlength="2" style="max-width:90px" value="${beepSecs()}"><span class="muted">secondes</span><button class="btn small ghost" id="bip-test">Tester</button></div></div>
       <div class="card"><h3>Sauvegarde</h3>
       <p class="muted">${h.length} séance(s) enregistrée(s). Les données restent sur le téléphone : exporte-les de temps en temps (copier puis coller dans une note ou un mail).</p>
       <button class="btn block" id="exp">Exporter (copier)</button><p></p>
@@ -1049,6 +1120,7 @@
       <button class="btn block ghost" id="replay-ob">Relancer la configuration de départ</button><p></p>
       ${BR.logoComplet ? `<div class="card" style="text-align:center;background:#fff"><img src="${esc(BR.logoComplet)}" alt="${esc(BR.coach || BR.nomApp)}" style="max-width:100%;max-height:140px"></div>` : ''}
       ${hasContact() ? `<a class="card link" href="#/contact"><div class="row between"><h3>Contacter ${esc(BR.coach || 'le coach')}</h3><span class="link-accent">›</span></div></a>` : ''}
+      <a class="card link" href="#/apropos"><div class="row between"><h3>À propos et confidentialité</h3><span class="link-accent">›</span></div></a>
       <p class="muted" id="ver" style="text-align:center">${esc(BR.nomApp)} v${esc(window.APP_VERSION || 'dev')}${hasContact() ? '' : ' · coordonnées du coach à venir'}</p>
       ${BR.majDepot ? `${updateHtml(true)}<p style="text-align:center"><button class="link-btn" id="chk-upd">Rechercher une mise à jour</button></p>` : ''}
       ${load('tr_dev', false) ? `${BR.partageUrl ? '<a class="card link" href="#/coach"><div class="row between"><h3>Mode coach : suivi des élèves</h3><span class="link-accent">›</span></div></a>' : ''}<p style="text-align:center"><button class="link-btn" id="chg-sheet">Changer le tableau du coach</button></p>
@@ -1116,6 +1188,8 @@
     $('#taille').oninput = (e) => { save('tr_taille', e.target.value.trim()); showImc(); };
     $('#poids').oninput = (e) => { save('tr_poids', e.target.value.trim()); showImc(); };
     showImc();
+    $('#bip').oninput = (e) => { const v = parseInt(e.target.value, 10); save('tr_bip', v > 0 ? Math.min(v, 30) : 0); };
+    $('#bip-test').onclick = () => { tick(); setTimeout(tick, 1000); };
     view.querySelectorAll('#theme button').forEach((b) => {
       b.onclick = () => { setTheme(b.dataset.t); viewReglages(); };
     });
@@ -1206,6 +1280,11 @@
     const e = s.exercices.find((x) => STOCK.includes(x.img || x.id));
     return e ? `background-image:url('img/${e.img || e.id}_0.jpg')` : 'background:linear-gradient(135deg,var(--accent),#7a2f00)';
   }
+  // Reps « 15 en 1 min » : 15 répétitions à faire dans une fenêtre d'une minute (fenetre_s = 60), le repos est le temps restant.
+  function repsFenetre(e) {
+    const t = String(e.reps || '10').trim(); const m = t.match(/^(\d+)\s*(?:en|\/|in)\s*(.+)$/i); const w = m ? timedSec(m[2]) : 0;
+    return w ? { reps: m[1], fenetre_s: w } : { reps: t.slice(0, 12), fenetre_s: parseInt(e.fenetre_s, 10) > 0 ? parseInt(e.fenetre_s, 10) : 0 };
+  }
   // Normalise un programme (saisi, importé ou copié) et lui donne des identifiants neufs.
   function normalizeSeance(src, nom) {
     const n = (v, d) => { const x = parseInt(v, 10); return x > 0 ? x : d; };
@@ -1222,7 +1301,7 @@
         id: uid('e_'),
         nom: String(e.nom).slice(0, 80),
         series: n(e.series, 3),
-        reps: String(e.reps || '10').slice(0, 12),
+        ...repsFenetre(e),
         par_cote: !!e.par_cote,
         repos_s: n(e.repos_s, 60),
         charge: true,
@@ -1231,7 +1310,8 @@
         note: e.note ? String(e.note).slice(0, 200) : '',
         img: isImg(e.img) ? e.img : (STOCK.includes(e.id) ? e.id : imgByName(e.nom)),
         variante: varianteOf(e.variante),
-      })),
+        fin: !!e.fin,
+      })).sort((a, b) => (a.fin ? 1 : 0) - (b.fin ? 1 : 0)),
     };
   }
   // Variante « machine guidée » d'un exercice : objet { nom, machine, img, par_cote? } ou simple nom (colonne Variante du tableau).
@@ -1372,6 +1452,8 @@
         s.echauffement = { exercice: ex, duree_min: parseInt(reps || rest, 10) || 5, repos_s: reps && rest ? parseRest(rest) : 60, resistance: note || get(r, 'Machine') };
       }
       else if (type.startsWith('etir')) (s.etirements = s.etirements || []).push({ nom: ex, duree_s: timedSec(get(r, 'Reps')) || parseInt(get(r, 'Reps'), 10) || 30, par_cote: yes(get(r, 'Par côté')) });
+      // Finisher avec « Séries » rempli : exercice à séries (case par série), placé en dernier. Sinon : simple case à cocher.
+      else if ((type.startsWith('finish') || type.startsWith('fin')) && parseInt(get(r, 'Séries'), 10) > 0 && ex) s.exercices.push({ nom: ex, series: get(r, 'Séries'), reps: get(r, 'Reps') || '10', repos_s: parseRest(get(r, 'Repos')) || 60, machine: get(r, 'Machine'), par_cote: yes(get(r, 'Par côté')), note, variante: get(r, 'Variante'), fin: true });
       else if (type.startsWith('finish') || type.startsWith('fin')) s.finisher = { exercice: ex, objectif: [get(r, 'Reps'), note].filter(Boolean).join(' · ') };
       else if (type.startsWith('consigne') || (!ex && note)) s.consigne = [s.consigne, note || ex].filter(Boolean).join(' ');
       else if (ex) s.exercices.push({ nom: ex, series: get(r, 'Séries'), reps: get(r, 'Reps') || '10', repos_s: parseRest(get(r, 'Repos')) || 60, machine: get(r, 'Machine'), par_cote: yes(get(r, 'Par côté')), note, variante: get(r, 'Variante') });
@@ -1388,7 +1470,7 @@
     list.forEach((s) => {
       if (s.consigne) out.push(['', s.nom, 'Consigne', '', '', '', '', '', '', s.consigne]);
       if (hasWarm(s)) out.push(['', s.nom, 'Échauffement', s.echauffement.exercice, '', s.echauffement.duree_min ? s.echauffement.duree_min + ' min' : '', fmtTime(warmRest(s)), '', '', s.echauffement.resistance || '']);
-      s.exercices.forEach((e) => out.push(['', s.nom, 'Exercice', e.nom, e.series, e.reps, fmtTime(e.repos_s || 0), machineFor(e).main, e.par_cote ? 'oui' : 'non', e.note || '', (e.variante || {}).nom || '']));
+      s.exercices.forEach((e) => out.push(['', s.nom, e.fin ? 'Finisher' : 'Exercice', e.nom, e.series, e.fenetre_s ? `${e.reps} en ${fmtTime(e.fenetre_s)}` : e.reps, fmtTime(e.repos_s || 0), machineFor(e).main, e.par_cote ? 'oui' : 'non', e.note || '', (e.variante || {}).nom || '']));
       (s.etirements || []).forEach((e) => out.push(['', s.nom, 'Étirement', e.nom, '', e.duree_s + ' s', '', '', e.par_cote ? 'oui' : 'non', '']));
       if (hasFin(s)) out.push(['', s.nom, 'Finisher', s.finisher.exercice, '', '', '', '', '', s.finisher.objectif || '']);
     });
@@ -1515,13 +1597,13 @@
       dyn.innerHTML = `<input class="field" id="pk-q" type="search" placeholder="Rechercher (nom, machine…)" value="${esc(query)}" autocomplete="off">
         ${kindChips(kind)}
         <div class="chips" style="${q ? 'opacity:.5' : ''}">${REPL.groupes.map((x) => `<button class="chip ${x.id === gid && !q ? 'on' : ''}" data-g="${x.id}">${esc(x.nom)}</button>`).join('')}</div>
-        ${list.map((e, i) => `<button class="rep-item" data-i="${i}">${isImg(e.img) ? `<img class="thumb" src="${imgSrc(e.img, 0)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ''}<span><b>${esc(e.nom)}</b><br><span class="muted">${esc(e.machine || '')}</span></span></button>`).join('')
+        ${exRows(list)
         || '<p class="muted">Aucun résultat : utilise « Autre exercice » plus bas.</p>'}`;
       const qi = dyn.querySelector('#pk-q');
       qi.oninput = () => { query = qi.value; const pos = qi.selectionStart; draw(); const n = dyn.querySelector('#pk-q'); n.focus(); n.setSelectionRange(pos, pos); };
       dyn.querySelectorAll('[data-g]').forEach((b) => { b.onclick = () => { gid = b.dataset.g; query = ''; draw(); }; });
       dyn.querySelectorAll('[data-k]').forEach((b) => { b.onclick = () => { kind = b.dataset.k; draw(); }; });
-      dyn.querySelectorAll('[data-i]').forEach((b) => { b.onclick = () => { close(); onPick(list[+b.dataset.i]); }; });
+      bindExRows(dyn, list, (e) => { close(); onPick(e); });
     };
     draw();
     o.querySelector('[data-close]').onclick = close;
@@ -1739,6 +1821,39 @@
       <div class="card">${items.length ? items.map(([l, v, href]) => `<a class="list-item" href="${esc(href)}" style="color:inherit;text-decoration:none"><span class="muted">${l}</span><span class="link-accent">${esc(v)}</span></a>`).join('') : '<p class="muted">Aucune coordonnée renseignée.</p>'}</div>`;
   }
 
+  // ---------- à propos : confidentialité, droits, santé, crédits ----------
+  // Texte d'information (pas un avis juridique). Il décrit ce que l'appli fait réellement : à tenir à jour si les envois changent.
+  function viewApropos() {
+    setTitle('À propos', '#/reglages'); setTab('reglages');
+    const coach = esc(BR.coach || 'le coach'); const mail = BR.contact && BR.contact.email;
+    const contactLink = mail ? `<a href="mailto:${encodeURIComponent(mail)}?subject=${encodeURIComponent(BR.nomApp + ' : mes données')}">${esc(mail)}</a>` : `${coach}`;
+    const sec = (titre, corps, open) => `<details class="card"${open ? ' open' : ''}><summary><b>${titre}</b></summary><div class="apropos">${corps}</div></details>`;
+    view.innerHTML = `<div class="card"><h3>${esc(BR.nomApp)}</h3>
+      <div class="muted">Version ${esc(window.APP_VERSION || 'dev')} · proposée par ${coach}.</div>
+      <p class="muted" style="font-size:13px;margin-bottom:0">Suivi de séances de musculation. Ce texte explique, simplement, ce que l'appli fait de tes données.</p></div>
+      ${sec('Tes données restent sur ton appareil', `<p>Pas de compte, pas de publicité, aucun outil de mesure d'audience ni traceur. Ce que tu saisis est enregistré <b>uniquement sur cet appareil</b> : prénom, taille et poids (facultatifs), séances et charges, notes, photos de machines, code client.</p>
+        <p>Tu peux tout exporter ou tout effacer à tout moment dans <a href="#/reglages">Réglages</a> (« Exporter » et « Tout effacer et recommencer »).</p>`, true)}
+      ${sec('Ce qui sort de ton appareil', `<ul>
+        <li><b>Programmes du coach</b> : l'appli lit un tableau Google Sheets partagé en lecture. Si tu as saisi un code client, il sert de nom d'onglet : Google reçoit donc ce code et ton adresse IP pour servir la page.</li>
+        <li><b>Images d'exercices</b> : chargées depuis GitHub (dépôt Free Exercise DB) quand tu es en ligne, sauf si tu as téléchargé les images hors ligne.</li>
+        <li><b>Mises à jour</b> : l'appli interroge GitHub pour savoir si une nouvelle version existe (GitHub reçoit ton adresse IP).</li>
+        ${BR.partageUrl ? `<li><b>Partage avec ${coach}</b>, seulement si tu l'actives (désactivé par défaut) : après chaque séance, code client, date, exercices, charges, répétitions ou durées, échauffement et finisher faits, et ta note. Jamais le prénom, la taille ni le poids. Les données arrivent dans un Google Sheets privé du coach.</li>` : ''}</ul>
+        <p class="muted">Rien d'autre n'est envoyé.</p>`)}
+      ${sec('Données de santé', `<p>Le poids, la taille, tes performances et tes notes peuvent révéler des informations sur ta santé : ce sont des données sensibles. Elles ne sont partagées avec ${coach} que si tu actives le partage, que tu peux couper quand tu veux. Ce qui a déjà été envoyé reste chez le coach tant que tu n'en demandes pas la suppression.</p>
+        <p>Ne mets pas dans les notes d'informations que tu ne veux pas partager (diagnostic, traitement…).</p>`)}
+      ${sec('Tes droits (RGPD et loi Informatique et Libertés)', `<p>Tu peux demander l'accès à tes données, leur rectification, leur effacement, la limitation ou l'opposition au traitement, et leur portabilité. Tu peux retirer ton consentement au partage à tout moment.</p>
+        <ul><li>Sur l'appareil : tout se fait dans Réglages (exporter, effacer).</li>
+        <li>Ce qui a été envoyé au coach : écris à ${contactLink} en indiquant ton code client.</li>
+        <li>Si tu estimes que tes droits ne sont pas respectés, tu peux saisir la CNIL (<a href="https://www.cnil.fr/fr/plaintes" target="_blank" rel="noopener">cnil.fr/fr/plaintes</a>).</li></ul>`)}
+      ${sec('Avertissement santé', `<p>${esc(BR.nomApp)} ne remplace ni un médecin ni un coach présent. En cas de doute, de maladie, de blessure, de grossesse ou de reprise après une longue pause, demande un avis médical avant de t'entraîner. Arrête la séance en cas de douleur, de vertige ou de malaise. L'IMC affiché est seulement indicatif.</p>
+        <p>Les images et descriptions montrent un mouvement type, pas ta technique : adapte les charges à ton niveau.</p>`)}
+      ${sec('Crédits et licences', `<ul>
+        <li>Images d'exercices et d'étirements : <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener">Free Exercise DB</a>, domaine public (Unlicense).</li>
+        <li>Quelques machines guidées, via <a href="https://wger.de" target="_blank" rel="noopener">wger.de</a>, sous licence CC BY-SA : « Leg Press on Hackenschmidt Machine », « Leg Curls (laying) » et « Leg Curls (sitting) » par Everkinetic, CC BY-SA 3.0 ; « Shoulder Press, on Machine » par wger.de, CC BY-SA 3.0 ; « Close-grip Lat Pull Down » par Franpol, CC BY-SA 4.0. Ces images sont redimensionnées et restent sous leur licence d'origine.</li>
+        <li>Le personnage de la fenêtre de félicitations est un dessin original.</li></ul>
+        <p class="muted">Les marques et noms de machines cités appartiennent à leurs propriétaires. Aucun lien avec eux.</p>`)}`;
+  }
+
   // ---------- profil : IMC ----------
   function imcHtml() {
     const t = num(load('tr_taille', '')), p = num(load('tr_poids', ''));
@@ -1845,6 +1960,7 @@
       case 'progres': return parts[1] ? viewProgresEx(parts[1]) : viewProgres();
       case 'reglages': return viewReglages();
       case 'contact': return viewContact();
+      case 'apropos': return viewApropos();
       case 'coach': return viewCoach(parts[1] ? decodeURIComponent(parts[1]) : '');
       case 'entrainement': return viewEntrainement();
       case 'bibliotheque': return viewBibliotheque();
