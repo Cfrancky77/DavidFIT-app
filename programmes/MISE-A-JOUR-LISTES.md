@@ -63,3 +63,7 @@ Une ligne **Circuit**, puis une ligne **Tour** par exercice du tour (dans l'ordr
 - Dans l'appli : une carte « Circuit » avec la liste du tour et une ligne par tour. Avec un temps par tour, chaque tour a son minuteur ⏱ (bips de fin) : le tour est coché à la fin ou avec « Passer » et le temps réellement mis s'affiche (✓ 0:48). Sans temps, on coche le tour, puis le repos éventuel démarre. + Tour / − Tour ajustent le nombre de tours en séance.
 - Un *Circuit* sans ligne *Tour* est ignoré. Ligne *Circuit* placée où tu veux dans la séance (avant les étirements, après ton dernier exercice pour un finisher).
 - Les charges ne sont pas suivies dans un circuit (une case par tour seulement).
+
+## Colonne « %RM » (charge en % du 1RM)
+
+Colonne facultative **%RM**, n'importe où : le pourcentage du 1RM demandé sur la ligne d'un exercice, par exemple `75`, `75%` ou `75 %`. Quand l'appli connaît un 1RM pour cet exercice (estimé par Brzycki d'après les séries de 1 à 10 répétitions avec charge déjà enregistrées, retrouvé par le nom de l'exercice), elle affiche « 75 % du 1RM (84 kg) = 63 kg » dans l'aperçu et en séance, et pré-remplit la charge (arrondie à 0,5 kg) à la place de celle de la dernière fois. Tant qu'aucun 1RM n'est connu, elle l'explique et ne remplit rien. Ligne sans %RM : rien ne change.

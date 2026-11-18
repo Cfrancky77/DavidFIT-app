@@ -224,6 +224,11 @@
   const rmBrzycki = (kg, reps) => (kg > 0 && reps >= 1 && reps <= 10 ? (reps === 1 ? kg : (kg * 36) / (37 - reps)) : null);
   const bestRm = (sets) => (sets || []).filter((st) => st.done && !st.sec).reduce((m, st) => { const r = rmBrzycki(num(st.kg), parseInt(st.reps, 10)); return r !== null && r > (m ? m.rm : 0) ? { rm: r, kg: num(st.kg), reps: parseInt(st.reps, 10) } : m; }, null);
   const fmtKg = (v) => (Math.round(v * 2) / 2).toLocaleString('fr-FR');
+  // Total (1RM) connu d'un exercice : meilleur 1RM estimé de tout l'historique, retrouvé par le nom. null tant qu'aucune série de 1 à 10 reps avec charge n'est enregistrée.
+  const rmOf = (nom) => { const e = progressByName()[nameKey(nom)]; const r = e ? e.pts.map((p) => bestRm(p.sets)).filter(Boolean) : []; return r.length ? Math.max(...r.map((x) => x.rm)) : null; };
+  const pctKg = (ex) => { const rm = ex.pct ? rmOf(ex.nom) : null; return rm ? Math.round((rm * ex.pct) / 100 * 2) / 2 : null; };
+  // Ligne « 75 % du 1RM = 63 kg » (ou l'explication quand le total n'est pas encore connu).
+  const pctLine = (ex) => { if (!ex.pct) return ''; const rm = rmOf(ex.nom); return `<div class="muted">🎯 ${ex.pct} % du 1RM${rm ? ` (${fmtKg(rm)} kg) = <b>${fmtKg(pctKg(ex))} kg</b>` : ' : pas encore de 1RM connu, fais une série de 1 à 10 répétitions avec une charge'}</div>`; };
   function bestKg(sets) {
     const kgs = (sets || []).filter((s) => s.done && num(s.kg) !== null).map((s) => num(s.kg));
     return kgs.length ? Math.max(...kgs) : null;
@@ -399,7 +404,8 @@
     const last = lastSetsFor(ex.id, ex.nom);
     return Array.from({ length: n || ex.series }, (_, i) => {
       const prev = last && last.sets[i];
-      return { kg: prev && prev.kg !== '' ? prev.kg : '', reps: repsMin(ex.reps), done: false, ...(timedSec(ex.reps) ? { sec: true } : {}) };
+      const pk = pctKg(ex); // % du 1RM demandé par le coach : prioritaire sur la dernière charge
+      return { kg: pk ? String(pk) : prev && prev.kg !== '' ? prev.kg : '', reps: repsMin(ex.reps), done: false, ...(timedSec(ex.reps) ? { sec: true } : {}) };
     });
   }
   function newSession(seance) {
@@ -557,7 +563,7 @@
     return s.exercices.map((ex) => {
       if (ex.circuit) return `<div class="card"><h3>${esc(ex.nom)} <span class="badge">Circuit</span></h3><div class="muted">${ex.series} tours${ex.fenetre_s ? ` de ${fmtTime(ex.fenetre_s)} maximum` : ''}${ex.repos_s ? ` · repos ${fmtTime(ex.repos_s)}` : ''}</div>${ex.circuit.map((t) => `<div class="muted">• ${esc(t.nom)}${t.reps ? ' : ' + esc(t.reps) : ''}</div>`).join('')}</div>`;
       const m = machineFor(ex);
-      return `<div class="card"><h3>${esc(ex.nom)}${ex.fin ? ' <span class="badge">Finisher</span>' : ''}</h3><div class="muted">${ex.fenetre_s ? `${ex.series} tours de ${esc(ex.reps)} en ${fmtTime(ex.fenetre_s)}` : `${ex.series} × ${esc(ex.reps)}${ex.par_cote ? ' par côté' : ''} · repos ${fmtTime(ex.repos_s)}`}</div>${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
+      return `<div class="card"><h3>${esc(ex.nom)}${ex.fin ? ' <span class="badge">Finisher</span>' : ''}</h3><div class="muted">${ex.fenetre_s ? `${ex.series} tours de ${esc(ex.reps)} en ${fmtTime(ex.fenetre_s)}` : `${ex.series} × ${esc(ex.reps)}${ex.par_cote ? ' par côté' : ''} · repos ${fmtTime(ex.repos_s)}`}</div>${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}${pctLine(ex)}
         <div class="machine"><div class="row">${thumb(m)}<span>Machine : <b>${esc(m.main)}</b></span></div>${varOf(ex) ? `<div class="alt">Sur machines : ${esc(varOf(ex).nom)}</div>` : ''}</div></div>`;
     }).join('') + (et.length ? `<div class="card"><h3>Retour au calme</h3><div class="muted">${et.map((e) => esc(e.nom)).join(' · ')}</div></div>` : '');
   }
@@ -592,7 +598,7 @@
       const last = lastSetsFor(ex.id, ex.nom);
       const sets = cur.exercices[ex.id];
       html += `<div class="card" data-ex="${ex.id}">
-        <div class="row between"><h3>${esc(ex.nom)}</h3><span class="badge">${ex.fenetre_s ? `${ex.series} tours · ${esc(ex.reps)} en ${fmtTime(ex.fenetre_s)}` : `${ex.series} × ${esc(ex.reps)}${ex.par_cote ? '/côté' : ''}`}</span></div>${ex.fin ? `<div class="muted">🔥 Finisher</div>` : ''}${ex.ajoute ? `<div class="muted">＋ Ajouté pour cette séance</div>` : ex.vm ? `<div class="muted">🏋 Sur machine${nameKey(ex.nom) !== nameKey(ex.de) ? ` · remplace : ${esc(ex.de)}` : ''}</div>` : ex.remplace ? `<div class="muted">↻ Remplace : ${esc(ex.de)}</div>` : ''}${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}
+        <div class="row between"><h3>${esc(ex.nom)}</h3><span class="badge">${ex.fenetre_s ? `${ex.series} tours · ${esc(ex.reps)} en ${fmtTime(ex.fenetre_s)}` : `${ex.series} × ${esc(ex.reps)}${ex.par_cote ? '/côté' : ''}`}</span></div>${ex.fin ? `<div class="muted">🔥 Finisher</div>` : ''}${ex.ajoute ? `<div class="muted">＋ Ajouté pour cette séance</div>` : ex.vm ? `<div class="muted">🏋 Sur machine${nameKey(ex.nom) !== nameKey(ex.de) ? ` · remplace : ${esc(ex.de)}` : ''}</div>` : ex.remplace ? `<div class="muted">↻ Remplace : ${esc(ex.de)}</div>` : ''}${ex.note ? `<div class="muted">💬 ${esc(ex.note)}</div>` : ''}${pctLine(ex)}
         ${last ? `<div class="muted">Précédent (${fmtShort(last.date)}) : ${esc(last.sets.filter((x) => x.done).map((x) => fmtSet(x)).join(', '))}</div>` : ''}
         <div class="machine"><div class="row">${thumb(m)}<span>Machine : <b>${esc(m.main)}</b>${m.custom ? ' <span class="muted">(perso)</span>' : ''}</span>
           <button class="btn small ghost" data-edit-machine="${ex.id}" aria-label="Modifier le nom de la machine" title="Modifier le nom de la machine" style="padding:2px 8px">✎</button></div>
@@ -1368,6 +1374,7 @@
         note: e.note ? String(e.note).slice(0, 200) : '',
         img: isImg(e.img) ? e.img : (STOCK.includes(e.id) ? e.id : imgByName(e.nom)),
         variante: varianteOf(e.variante),
+        ...(parseInt(e.pct, 10) > 0 && parseInt(e.pct, 10) <= 150 ? { pct: parseInt(e.pct, 10) } : {}),
         fin: !!e.fin,
         ...(Array.isArray(e.circuit) ? { reps: '', repos_s: Math.max(0, parseInt(e.repos_s, 10) || 0), circuit: e.circuit.filter((t) => t && t.nom).map((t) => ({ nom: String(t.nom).slice(0, 80), reps: String(t.reps || '').slice(0, 20), machine: String(t.machine || '').slice(0, 80) })) } : {}),
       })).filter((e) => !e.circuit || e.circuit.length).sort((a, b) => (a.fin ? 1 : 0) - (b.fin ? 1 : 0)),
@@ -1459,7 +1466,7 @@
   }
 
   // ---------- tableau CSV (Excel, LibreOffice, Google Sheets) ----------
-  const CSV_COLS = ['Client', 'Séance', 'Type', 'Exercice', 'Séries', 'Reps', 'Repos', 'Machine', 'Par côté', 'Note', 'Variante'];
+  const CSV_COLS = ['Client', 'Séance', 'Type', 'Exercice', 'Séries', 'Reps', 'Repos', 'Machine', 'Par côté', 'Note', 'Variante', '%RM'];
   const fold = (v) => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
   const slug = (v) => fold(v).replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'x';
   function parseCsv(txt) {
@@ -1485,6 +1492,7 @@
     m = t.match(/(\d+)\s*(min|mn|m)\b\s*(\d+)?/); if (m) return +m[1] * 60 + (+m[3] || 0);
     m = t.match(/(\d+)/); return m ? +m[1] : 0;
   }
+  const pctOf = (v) => { const n = parseInt(String(v).replace(',', '.'), 10); return n > 0 && n <= 150 ? n : 0; }; // « 75 », « 75% », « 75 % »
   const yes = (v) => ['oui', 'o', 'x', 'yes', 'y', '1', 'vrai', 'true'].includes(fold(v));
   // Lignes → programmes. opts.all : tout importer ; sinon seulement les lignes pour tous + celles du client.
   function csvToSeances(txt, opts = {}) {
@@ -1515,10 +1523,10 @@
       // Circuit : une ligne « Circuit » (nom, Séries = tours, Reps = temps par tour, Repos = repos entre tours), puis une ligne « Tour » par exercice du tour.
       else if (type.startsWith('circuit')) s.exercices.push({ nom: ex || 'Circuit', series: parseInt(get(r, 'Séries'), 10) > 0 ? get(r, 'Séries') : (/^\d+$/.test(get(r, 'Reps').trim()) ? get(r, 'Reps').trim() : '3'), reps: '', repos_s: parseRest(get(r, 'Repos')) || 0, fenetre_s: timedSec(get(r, 'Reps')) || 0, note, circuit: [] }); // Séries vide mais Reps = nombre seul : c'est le nombre de tours
       else if (type.startsWith('tour')) { const c = [...s.exercices].reverse().find((e) => e.circuit); if (c && ex) c.circuit.push({ nom: ex, reps: get(r, 'Reps'), machine: get(r, 'Machine') }); }
-      else if ((type.startsWith('finish') || type.startsWith('fin')) && parseInt(get(r, 'Séries'), 10) > 0 && ex) s.exercices.push({ nom: ex, series: get(r, 'Séries'), reps: get(r, 'Reps') || '10', repos_s: parseRest(get(r, 'Repos')) || 60, machine: get(r, 'Machine'), par_cote: yes(get(r, 'Par côté')), note, variante: get(r, 'Variante'), fin: true });
+      else if ((type.startsWith('finish') || type.startsWith('fin')) && parseInt(get(r, 'Séries'), 10) > 0 && ex) s.exercices.push({ nom: ex, series: get(r, 'Séries'), reps: get(r, 'Reps') || '10', repos_s: parseRest(get(r, 'Repos')) || 60, machine: get(r, 'Machine'), par_cote: yes(get(r, 'Par côté')), note, variante: get(r, 'Variante'), pct: pctOf(get(r, '%RM')), fin: true });
       else if (type.startsWith('finish') || type.startsWith('fin')) s.finisher = { exercice: ex, objectif: [get(r, 'Reps'), note].filter(Boolean).join(' · ') };
       else if (type.startsWith('consigne') || (!ex && note)) s.consigne = [s.consigne, note || ex].filter(Boolean).join(' ');
-      else if (ex) s.exercices.push({ nom: ex, series: get(r, 'Séries'), reps: get(r, 'Reps') || '10', repos_s: parseRest(get(r, 'Repos')) || 60, machine: get(r, 'Machine'), par_cote: yes(get(r, 'Par côté')), note, variante: get(r, 'Variante') });
+      else if (ex) s.exercices.push({ nom: ex, series: get(r, 'Séries'), reps: get(r, 'Reps') || '10', repos_s: parseRest(get(r, 'Repos')) || 60, machine: get(r, 'Machine'), par_cote: yes(get(r, 'Par côté')), note, variante: get(r, 'Variante'), pct: pctOf(get(r, '%RM')) });
     });
     const list = [...map.values()].filter((s) => s.exercices.length);
     if (!list.length) throw new Error(opts.all ? 'Aucun exercice trouvé dans le tableau.' : 'Aucun programme pour ce code client.');
@@ -1534,7 +1542,7 @@
       if (hasWarm(s)) out.push(['', s.nom, 'Échauffement', s.echauffement.exercice, '', s.echauffement.duree_min ? s.echauffement.duree_min + ' min' : '', fmtTime(warmRest(s)), '', '', s.echauffement.resistance || '']);
       s.exercices.forEach((e) => {
         if (e.circuit) { out.push(['', s.nom, 'Circuit', e.nom, e.series, e.fenetre_s ? fmtTime(e.fenetre_s) : '', e.repos_s ? fmtTime(e.repos_s) : '', '', '', e.note || '', '']); e.circuit.forEach((t) => out.push(['', s.nom, 'Tour', t.nom, '', t.reps || '', '', t.machine || '', '', '', ''])); return; }
-        out.push(['', s.nom, e.fin ? 'Finisher' : 'Exercice', e.nom, e.series, e.fenetre_s ? `${e.reps} en ${fmtTime(e.fenetre_s)}` : e.reps, fmtTime(e.repos_s || 0), machineFor(e).main, e.par_cote ? 'oui' : 'non', e.note || '', (e.variante || {}).nom || '']);
+        out.push(['', s.nom, e.fin ? 'Finisher' : 'Exercice', e.nom, e.series, e.fenetre_s ? `${e.reps} en ${fmtTime(e.fenetre_s)}` : e.reps, fmtTime(e.repos_s || 0), machineFor(e).main, e.par_cote ? 'oui' : 'non', e.note || '', (e.variante || {}).nom || '', e.pct || '']);
       });
       (s.etirements || []).forEach((e) => out.push(['', s.nom, 'Étirement', e.nom, '', e.duree_s + ' s', '', '', e.par_cote ? 'oui' : 'non', '']));
       if (hasFin(s)) out.push(['', s.nom, 'Finisher', s.finisher.exercice, '', '', '', '', '', s.finisher.objectif || '']);
